@@ -5,7 +5,7 @@ for gym-moving-dot and Atari games.
 
 import tensorflow as tf
 
-from nn_layers import dense_layer, conv_layer
+from drlhp.nn_layers import dense_layer, conv_layer
 
 
 def get_dot_position(s):

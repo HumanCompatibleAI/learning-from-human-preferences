@@ -8,8 +8,8 @@ from numpy import exp, log
 from numpy.testing import (assert_allclose, assert_approx_equal,
                            assert_array_equal, assert_raises)
 
-from reward_predictor import RewardPredictorNetwork
-from reward_predictor_core_network import net_cnn
+from drlhp.reward_predictor import RewardPredictorNetwork
+from drlhp.reward_predictor_core_network import net_cnn
 
 
 class TestRewardPredictor(unittest.TestCase):

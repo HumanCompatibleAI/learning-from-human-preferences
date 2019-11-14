@@ -9,17 +9,16 @@ from multiprocessing import Process, Queue
 
 import cloudpickle
 import easy_tf_log
-from a2c import logger
-from a2c.a2c.a2c import learn
-from a2c.a2c.policies import CnnPolicy, MlpPolicy
-from a2c.common import set_global_seeds
-from a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
-from params import parse_args, PREFS_VAL_FRACTION
-from pref_db import PrefDB, PrefBuffer
-from pref_interface import PrefInterface
-from reward_predictor import RewardPredictorEnsemble
-from reward_predictor_core_network import net_cnn, net_moving_dot_features
-from utils import VideoRenderer, get_port_range, make_env
+from drlhp.a2c import logger, learn
+from drlhp.a2c.policies import CnnPolicy, MlpPolicy
+from drlhp.a2c.common import set_global_seeds
+from drlhp.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
+from drlhp.params import parse_args, PREFS_VAL_FRACTION
+from drlhp.pref_db import PrefDB, PrefBuffer
+from drlhp.pref_interface import PrefInterface
+from drlhp.reward_predictor import RewardPredictorEnsemble
+from drlhp.reward_predictor_core_network import net_cnn, net_moving_dot_features
+from drlhp.utils import VideoRenderer, get_port_range, make_env
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # filter out INFO messages
 

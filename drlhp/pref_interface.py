@@ -14,7 +14,7 @@ from random import shuffle
 import easy_tf_log
 import numpy as np
 
-from utils import VideoRenderer
+from drlhp.utils import VideoRenderer
 
 
 class PrefInterface:

@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from a2c.a2c.utils import Scheduler
+from drlhp.a2c.utils import Scheduler
 
 
 def parse_args():
