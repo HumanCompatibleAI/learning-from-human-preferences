@@ -1,0 +1,7 @@
+scipy>=1.3.2
+cloudpickle>=1.2.2
+matplotlib>=3.0.0
+gym[atari]==0.9.3
+easy-tf-log==1.1
+tensorflow<=1.14.0
+gym-moving-dot @ git://github.com/mrahtz/gym-moving-dot@master

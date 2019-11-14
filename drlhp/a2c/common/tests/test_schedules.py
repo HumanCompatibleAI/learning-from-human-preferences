@@ -1,6 +1,6 @@
 import numpy as np
 
-from a2c.common.schedules import ConstantSchedule, PiecewiseSchedule
+from drlhp.a2c.common.schedules import ConstantSchedule, PiecewiseSchedule
 
 
 def test_piecewise_schedule():

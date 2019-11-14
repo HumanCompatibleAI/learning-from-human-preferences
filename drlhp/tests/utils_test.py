@@ -6,7 +6,7 @@ from math import ceil
 
 import numpy as np
 
-from utils import RunningStat, batch_iter, get_port_range
+from drlhp.utils import RunningStat, batch_iter, get_port_range
 
 
 class TestUtils(unittest.TestCase):

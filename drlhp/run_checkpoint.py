@@ -16,7 +16,7 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
-from utils import make_env
+from drlhp.utils import make_env
 
 
 def main():

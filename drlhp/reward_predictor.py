@@ -7,7 +7,7 @@ import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
 
-from utils import RunningStat, batch_iter
+from drlhp.utils import RunningStat, batch_iter
 
 
 class RewardPredictorEnsemble:

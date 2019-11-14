@@ -9,11 +9,11 @@ import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
 
-from a2c import logger
-from a2c.a2c.utils import (cat_entropy, discount_with_dones,
-                           find_trainable_variables, mse)
-from a2c.common import explained_variance, set_global_seeds
-from pref_db import Segment
+from drlhp.a2c import logger
+from drlhp.a2c.utils import (cat_entropy, discount_with_dones,
+                             find_trainable_variables, mse)
+from drlhp.a2c.common import explained_variance, set_global_seeds
+from drlhp.pref_db import Segment
 
 
 class Model(object):

@@ -2,7 +2,7 @@
 
 import unittest
 import numpy as np
-from pref_db import PrefDB
+from drlhp.pref_db import PrefDB
 
 
 class TestPrefDB(unittest.TestCase):

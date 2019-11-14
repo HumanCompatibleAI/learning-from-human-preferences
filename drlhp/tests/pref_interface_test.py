@@ -6,8 +6,8 @@ from multiprocessing import Queue
 import numpy as np
 import termcolor
 
-from pref_db import Segment
-from pref_interface import PrefInterface
+from drlhp.pref_db import Segment
+from drlhp.pref_interface import PrefInterface
 
 
 def send_segments(n_segments, seg_pipe):

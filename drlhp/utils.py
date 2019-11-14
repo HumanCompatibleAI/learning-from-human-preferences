@@ -8,7 +8,7 @@ import gym
 import numpy as np
 import pyglet
 
-from a2c.common.atari_wrappers import wrap_deepmind
+from drlhp.a2c.common import wrap_deepmind
 from scipy.ndimage import zoom
 
 
@@ -227,10 +227,10 @@ def batch_iter(data, batch_size, shuffle=False):
 
 def make_env(env_id, seed=0):
     if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-        import gym_moving_dot
+        pass
     env = gym.make(env_id)
     env.seed(seed)
     if env_id == 'EnduroNoFrameskip-v4':
-        from enduro_wrapper import EnduroWrapper
+        from drlhp.enduro_wrapper import EnduroWrapper
         env = EnduroWrapper(env)
     return wrap_deepmind(env)
