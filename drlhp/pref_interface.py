@@ -19,17 +19,19 @@ from drlhp.utils import VideoRenderer
 
 class PrefInterface:
 
-    def __init__(self, synthetic_prefs, max_segs, log_dir):
+    def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels):
         self.vid_q = Queue()
         if not synthetic_prefs:
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
                                           mode=VideoRenderer.restart_on_get_mode,
-                                          zoom=4)
+                                          zoom=zoom)
         else:
             self.renderer = None
         self.synthetic_prefs = synthetic_prefs
+        self.zoom = zoom
         self.seg_idx = 0
         self.segments = []
+        self.channels = channels
         self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
         easy_tf_log.set_dir(log_dir)
@@ -41,7 +43,7 @@ class PrefInterface:
     def run(self, seg_pipe, pref_pipe):
         while len(self.segments) < 2:
             print("Preference interface waiting for segments")
-            time.sleep(5.0)
+            time.sleep(120.0)
             self.recv_segments(seg_pipe)
 
         while True:

@@ -15,6 +15,7 @@ setup(
      author_email="codywild@berkeley.edu",
      description="More general implementation of Deep RL from Human Preferences",
      install_requires=requirements,
+     dependency_links=['http://github.com/mrahtz/gym-moving-dot/tarball/master#egg=gym-moving-dot'],
      long_description=long_description,
      packages=['drlhp'],
      classifiers=[

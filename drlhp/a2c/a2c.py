@@ -3,15 +3,18 @@ import os.path as osp
 import queue
 import time
 
+from copy import deepcopy
 import cloudpickle
 import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
+import readline
 
 from drlhp.a2c import logger
 from drlhp.a2c.utils import (cat_entropy, discount_with_dones,
                              find_trainable_variables, mse)
+from drlhp.utils import ForkedPdb
 from drlhp.a2c.common import explained_variance, set_global_seeds
 from drlhp.pref_db import Segment
 
@@ -37,30 +40,35 @@ class Model(object):
             inter_op_parallelism_threads=num_procs)
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
-        nbatch = nenvs * nsteps
-
-        A = tf.placeholder(tf.int32, [nbatch])
-        ADV = tf.placeholder(tf.float32, [nbatch])
-        R = tf.placeholder(tf.float32, [nbatch])
+        train_batch = nenvs * nsteps
+        print("Create placeholders")
+        #TODO check that this works for other action spaces
+        A = tf.placeholder(tf.int32, [train_batch] + list(ac_space.shape))
+        ADV = tf.placeholder(tf.float32, [train_batch])
+        R = tf.placeholder(tf.float32, [train_batch])
         LR = tf.placeholder(tf.float32, [])
 
+        print("Initialize policy objects")
         step_model = policy(
-            sess, ob_space, ac_space, nenvs, 1, nstack, reuse=False)
+            sess, ob_space, ac_space, nenvs, 1, nenvs, reuse=False)
         train_model = policy(
-            sess, ob_space, ac_space, nenvs, nsteps, nstack, reuse=True)
+            sess, ob_space, ac_space, nenvs, nsteps, train_batch, reuse=True)
 
-        neglogpac = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=train_model.pi, labels=A)
+        neglogpac = train_model.proba_distribution.neglogp(A)
+
+        # Is the error a function of the different loss terms?
         pg_loss = tf.reduce_mean(ADV * neglogpac)
-        vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.vf), R))
-        entropy = tf.reduce_mean(cat_entropy(train_model.pi))
-        loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef
+        vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.value_fn), R))
+        entropy = tf.reduce_mean(train_model.proba_distribution.entropy())
+        loss = pg_loss + vf_loss * vf_coef - entropy * ent_coef
 
         params = find_trainable_variables("model")
+
         grads = tf.gradients(loss, params)
         if max_grad_norm is not None:
             grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
         grads = list(zip(grads, params))
+        print("Create trainer")
         trainer = tf.train.RMSPropOptimizer(
             learning_rate=LR, decay=alpha, epsilon=epsilon)
         _train = trainer.apply_gradients(grads)
@@ -129,8 +137,12 @@ class Runner(object):
         self.obs = np.zeros((nenv, nh, nw, nc * nstack), dtype=np.uint8)
         # The first stack of 4 frames: the first 3 frames are zeros,
         # with the last frame coming from env.reset().
+        print("Got to before reset")
+        print("Shape of self.obs: {}".format(self.obs.shape))
         obs = env.reset()
+        print("Finished env reset")
         self.update_obs(obs)
+        print("Finished updating obs")
         self.gamma = gamma
         self.nsteps = nsteps
         self.states = model.initial_state
@@ -145,10 +157,12 @@ class Runner(object):
 
         self.episode_frames = []
         self.episode_vid_queue = episode_vid_queue
+        print("Got to end of Runner creation")
 
     def update_obs(self, obs):
         # Do frame-stacking here instead of the FrameStack wrapper to reduce
         # IPC overhead
+        # TODO channel fix
         self.obs = np.roll(self.obs, shift=-1, axis=3)
         self.obs[:, :, :, -1] = obs[:, :, :, 0]
 
@@ -158,9 +172,11 @@ class Runner(object):
         e0_obs = mb_obs[0]
         e0_rew = mb_rewards[0]
         e0_dones = mb_dones[0]
-        assert_equal(e0_obs.shape, (self.nsteps, 84, 84, 4))
-        assert_equal(e0_rew.shape, (self.nsteps, ))
-        assert_equal(e0_dones.shape, (self.nsteps, ))
+        # TODO shape fix
+        assert_equal(e0_obs.shape[0], self.nsteps)
+        assert(e0_obs.shape[-1] % 4 == 0)
+        assert_equal(e0_rew.shape[0], self.nsteps)
+        assert_equal(e0_dones.shape[0], self.nsteps)
 
         for step in range(self.nsteps):
             self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
@@ -201,7 +217,7 @@ class Runner(object):
 
         # Run for nsteps steps in the environment
         for _ in range(self.nsteps):
-            actions, values, states = self.model.step(self.obs, self.states,
+            actions, values, states, _ = self.model.step(self.obs, self.states,
                                                       self.dones)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
@@ -308,7 +324,7 @@ def learn(policy,
           start_policy_training_pipe,
           ckpt_save_dir,
           lr_scheduler,
-          nsteps=5,
+          nsteps=5, # TODO work out how to change this back to 5
           nstack=4,
           total_timesteps=int(80e6),
           vf_coef=0.5,
@@ -327,9 +343,16 @@ def learn(policy,
 
     tf.reset_default_graph()
     set_global_seeds(seed)
-
     nenvs = env.num_envs
-    ob_space = env.observation_space
+    ob_space = deepcopy(env.observation_space)
+    nh, nw, nc = ob_space.shape
+    new_shape = (nh, nw, nc*nstack)
+    # # TODO make this more general!
+    low, high = np.zeros(new_shape), np.full(new_shape, 255)
+    ob_space.shape = new_shape
+    ob_space.low = low
+    ob_space.high = high
+
     ac_space = env.action_space
     num_procs = len(env.remotes)  # HACK
 
@@ -365,7 +388,7 @@ def learn(policy,
         print("Loaded policy from checkpoint '{}'".format(ckpt_load_path))
 
     ckpt_save_path = osp.join(ckpt_save_dir, 'policy.ckpt')
-
+    print("Model loaded")
     runner = Runner(env=env,
                     model=model,
                     nsteps=nsteps,
@@ -381,7 +404,6 @@ def learn(policy,
     nbatch = nenvs * nsteps
     fps_tstart = time.time()
     fps_nsteps = 0
-
     print("Starting workers")
 
     # Before we're told to start training the policy itself,

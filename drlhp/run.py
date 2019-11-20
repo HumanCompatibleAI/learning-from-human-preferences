@@ -11,14 +11,12 @@ import cloudpickle
 import easy_tf_log
 from drlhp.a2c import logger, learn
 from drlhp.a2c.policies import CnnPolicy, MlpPolicy
-from drlhp.a2c.common import set_global_seeds
-from drlhp.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from drlhp.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.pref_db import PrefDB, PrefBuffer
 from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor import RewardPredictorEnsemble
 from drlhp.reward_predictor_core_network import net_cnn, net_moving_dot_features
-from drlhp.utils import VideoRenderer, get_port_range, make_env
+from drlhp.utils import VideoRenderer, get_port_range, make_envs
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # filter out INFO messages
 
@@ -43,19 +41,21 @@ def run(general_params,
     seg_pipe = Queue(maxsize=1)
     pref_pipe = Queue(maxsize=1)
     start_policy_training_flag = Queue(maxsize=1)
-
+    assert ('env' in a2c_params) != ('env_id' in a2c_params), "At least and only one of env or env_id should be passed in"
     if general_params['render_episodes']:
         episode_vid_queue, episode_renderer = start_episode_renderer()
     else:
         episode_vid_queue = episode_renderer = None
 
-    if a2c_params['env_id'] in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-        reward_predictor_network = net_moving_dot_features
-    elif a2c_params['env_id'] in ['PongNoFrameskip-v4', 'EnduroNoFrameskip-v4']:
-        reward_predictor_network = net_cnn
-    else:
-        raise Exception("Unsure about reward predictor network for {}".format(
-            a2c_params['env_id']))
+    reward_predictor_network = rew_pred_training_params.get('reward_predictor_network')
+    if reward_predictor_network is None:
+        if a2c_params['env_id'] in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
+            reward_predictor_network = net_moving_dot_features
+        elif a2c_params['env_id'] in ['PongNoFrameskip-v4', 'EnduroNoFrameskip-v4']:
+            reward_predictor_network = net_cnn
+        else:
+            raise Exception("Unsure about reward predictor network for {}".format(
+                a2c_params['env_id']))
 
     def make_reward_predictor(name, cluster_dict):
         return RewardPredictorEnsemble(
@@ -215,16 +215,6 @@ def configure_a2c_logger(log_dir):
     logger.Logger.CURRENT = logger.Logger(dir=a2c_dir, output_formats=[tb])
 
 
-def make_envs(env_id, n_envs, seed):
-    def wrap_make_env(env_id, rank):
-        def _thunk():
-            return make_env(env_id, seed + rank)
-        return _thunk
-    set_global_seeds(seed)
-    env = SubprocVecEnv(env_id, [wrap_make_env(env_id, i)
-                                 for i in range(n_envs)])
-    return env
-
 
 def start_parameter_server(cluster_dict, make_reward_predictor):
     def f():
@@ -240,22 +230,29 @@ def start_parameter_server(cluster_dict, make_reward_predictor):
 def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
                           start_policy_training_pipe, seg_pipe,
                           episode_vid_queue, log_dir, a2c_params):
-    env_id = a2c_params['env_id']
-    if env_id in ['MovingDotNoFrameskip-v0', 'MovingDot-v0']:
-        policy_fn = MlpPolicy
-    elif env_id in ['PongNoFrameskip-v4', 'EnduroNoFrameskip-v4']:
-        policy_fn = CnnPolicy
-    else:
-        msg = "Unsure about policy network for {}".format(a2c_params['env_id'])
-        raise Exception(msg)
+
+    policy_fn = a2c_params.get('policy_network')
+    if policy_fn is None:
+        env_id = a2c_params['env_id']
+        if env_id in ['MovingDotNoFrameskip-v0', 'MovingDot-v0']:
+            policy_fn = MlpPolicy
+        elif env_id in ['PongNoFrameskip-v4', 'EnduroNoFrameskip-v4']:
+            policy_fn = CnnPolicy
+        else:
+            msg = "Unsure about policy network for {}".format(a2c_params['env_id'])
+            raise Exception(msg)
 
     configure_a2c_logger(log_dir)
 
     # Done here because daemonic processes can't have children
-    env = make_envs(a2c_params['env_id'],
-                    a2c_params['n_envs'],
-                    a2c_params['seed'])
-    del a2c_params['env_id'], a2c_params['n_envs']
+    env = make_envs(a2c_params.get('env'),
+                    a2c_params.get('env_id'),
+                    a2c_params.get('n_envs'),
+                    a2c_params.get('seed'))
+
+    for k in ['env_id', 'env', 'n_envs', 'policy_network']:
+        if k in a2c_params:
+            del a2c_params[k]
 
     ckpt_dir = osp.join(log_dir, 'policy_checkpoints')
     os.makedirs(ckpt_dir)
@@ -284,7 +281,7 @@ def start_policy_training(cluster_dict, make_reward_predictor, gen_segments,
 
 
 def start_pref_interface(seg_pipe, pref_pipe, max_segs, synthetic_prefs,
-                         log_dir):
+                         log_dir, zoom, channels):
     def f():
         # The preference interface needs to get input from stdin. stdin is
         # automatically closed at the beginning of child processes in Python,
@@ -296,7 +293,9 @@ def start_pref_interface(seg_pipe, pref_pipe, max_segs, synthetic_prefs,
     prefs_log_dir = osp.join(log_dir, 'pref_interface')
     pi = PrefInterface(synthetic_prefs=synthetic_prefs,
                        max_segs=max_segs,
-                       log_dir=prefs_log_dir)
+                       log_dir=prefs_log_dir,
+                       channels=channels,
+                       zoom=zoom)
     proc = Process(target=f, daemon=True)
     proc.start()
     return pi, proc

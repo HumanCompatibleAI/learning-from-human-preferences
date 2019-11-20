@@ -7,8 +7,12 @@ from multiprocessing import Process
 import gym
 import numpy as np
 import pyglet
+import pdb
+import sys
 
 from drlhp.a2c.common import wrap_deepmind
+from drlhp.a2c.common import set_global_seeds
+from drlhp.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from scipy.ndimage import zoom
 
 
@@ -225,12 +229,38 @@ def batch_iter(data, batch_size, shuffle=False):
         start_idx += batch_size
 
 
-def make_env(env_id, seed=0):
-    if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-        pass
-    env = gym.make(env_id)
-    env.seed(seed)
-    if env_id == 'EnduroNoFrameskip-v4':
-        from drlhp.enduro_wrapper import EnduroWrapper
-        env = EnduroWrapper(env)
-    return wrap_deepmind(env)
+def make_env(env, env_id, seed=0):
+    if env is None:
+        if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
+            pass
+        env = gym.make(env_id)
+        env.seed(seed)
+        if env_id == 'EnduroNoFrameskip-v4':
+            from drlhp.enduro_wrapper import EnduroWrapper
+            env = EnduroWrapper(env)
+        return wrap_deepmind(env)
+    return env
+
+def make_envs(env, env_id, n_envs, seed):
+    def wrap_make_env(env, env_id, rank):
+        def _thunk():
+            return make_env(env, env_id, seed + rank)
+        return _thunk
+    set_global_seeds(seed)
+    env = SubprocVecEnv(env_id, [wrap_make_env(env, env_id, i)
+                                 for i in range(n_envs)])
+    return env
+
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
