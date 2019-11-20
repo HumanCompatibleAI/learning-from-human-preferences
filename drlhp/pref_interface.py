@@ -123,12 +123,14 @@ class PrefInterface:
     def ask_user(self, s1, s2):
         vid = []
         seg_len = len(s1)
+        frame_shape = s1.frames[0][:, :, -1].shape
         for t in range(seg_len):
-            border = np.zeros((84, 10), dtype=np.uint8)
+            border = np.zeros((frame_shape[0], 10), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
-            frame = np.hstack((s1.frames[t][:, :, -1],
+            # TODO make this general across channels
+            frame = np.hstack((s1.frames[t][:, :, -3],
                                border,
-                               s2.frames[t][:, :, -1]))
+                               s2.frames[t][:, :, -3]))
             vid.append(frame)
         n_pause_frames = 7
         for _ in range(n_pause_frames):

@@ -18,6 +18,7 @@ class RewardPredictorEnsemble:
     def __init__(self,
                  cluster_job_name,
                  core_network,
+                 obs_shape,
                  lr=1e-4,
                  cluster_dict=None,
                  batchnorm=False,
@@ -25,6 +26,7 @@ class RewardPredictorEnsemble:
                  n_preds=1,
                  log_dir=None):
         self.n_preds = n_preds
+        self.obs_shape = obs_shape
         graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
         # Why not just use soft device placement? With soft placement,
         # if we have a bug which prevents an operation being placed on the GPU
@@ -49,7 +51,8 @@ class RewardPredictorEnsemble:
                             core_network=core_network,
                             dropout=dropout,
                             batchnorm=batchnorm,
-                            lr=lr)
+                            lr=lr,
+                            obs_shape=self.obs_shape)
                 self.rps.append(rp)
             self.init_op = tf.global_variables_initializer()
             # Why save_relative_paths=True?
@@ -128,7 +131,6 @@ class RewardPredictorEnsemble:
         Return (unnormalized) reward for each frame of a single segment
         from each member of the ensemble.
         """
-        assert_equal(obs.shape[1:], (84, 84, 4))
         n_steps = obs.shape[0]
         feed_dict = {}
         for rp in self.rps:
@@ -151,7 +153,6 @@ class RewardPredictorEnsemble:
         ensemble separately, then averaging the resulting rewards across all
         ensemble members.)
         """
-        assert_equal(obs.shape[1:], (84, 84, 4))
         n_steps = obs.shape[0]
 
         # Get unnormalized rewards
@@ -292,20 +293,22 @@ class RewardPredictorNetwork:
     - pred      Predicted preference
     """
 
-    def __init__(self, core_network, dropout, batchnorm, lr):
+    def __init__(self, core_network, dropout, batchnorm, lr, obs_shape):
         training = tf.placeholder(tf.bool)
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
-        s1 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 4))
-        s2 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 4))
+        h, w, c = obs_shape
+        # TODO explicitly pass nstack in here
+        s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
+        s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
         # For each trajectory segment, there is one human judgement.
         pref = tf.placeholder(tf.float32, shape=(None, 2))
 
         # Concatenate trajectory segments so that the first dimension is just
         # frames
         # (necessary because of conv layer's requirements on input shape)
-        s1_unrolled = tf.reshape(s1, [-1, 84, 84, 4])
-        s2_unrolled = tf.reshape(s2, [-1, 84, 84, 4])
+        s1_unrolled = tf.reshape(s1, [-1, h, w, c*4])
+        s2_unrolled = tf.reshape(s2, [-1, h, w, c*4])
 
         # Predict rewards for each frame in the unrolled batch
         _r1 = core_network(

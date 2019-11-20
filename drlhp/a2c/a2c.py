@@ -172,8 +172,8 @@ class Runner(object):
         e0_obs = mb_obs[0]
         e0_rew = mb_rewards[0]
         e0_dones = mb_dones[0]
-        # TODO shape fix
         assert_equal(e0_obs.shape[0], self.nsteps)
+        # TODO make this general to nstack parameter
         assert(e0_obs.shape[-1] % 4 == 0)
         assert_equal(e0_rew.shape[0], self.nsteps)
         assert_equal(e0_dones.shape[0], self.nsteps)
@@ -277,8 +277,11 @@ class Runner(object):
         # action.)
         logging.debug("Original rewards:\n%s", mb_rewards)
         if self.reward_predictor:
-            assert_equal(mb_obs.shape, (nenvs, self.nsteps, 84, 84, 4))
-            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, 84, 84, 4)
+            assert_equal(mb_obs.shape[0], nenvs)
+            assert_equal(mb_obs.shape[1], self.nsteps)
+            assert(mb_obs.shape[-1] % 4 == 0)
+            h, w, c = mb_obs.shape[-3:]
+            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, h, w, c)
 
             rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
             assert_equal(rewards_allenvs.shape, (nenvs * self.nsteps, ))
