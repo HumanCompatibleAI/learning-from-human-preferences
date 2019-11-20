@@ -65,7 +65,8 @@ def run(general_params,
             batchnorm=rew_pred_training_params['batchnorm'],
             dropout=rew_pred_training_params['dropout'],
             lr=rew_pred_training_params['lr'],
-            core_network=reward_predictor_network)
+            core_network=reward_predictor_network,
+            ob_shape=rew_pred_training_params['obs_shape'])
 
     save_make_reward_predictor(general_params['log_dir'],
                                make_reward_predictor)
