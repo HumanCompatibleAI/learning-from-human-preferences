@@ -13,7 +13,7 @@ from random import shuffle
 
 import easy_tf_log
 import numpy as np
-
+import cv2
 from drlhp.utils import VideoRenderer
 
 
@@ -24,7 +24,8 @@ class PrefInterface:
         if not synthetic_prefs:
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
                                           mode=VideoRenderer.restart_on_get_mode,
-                                          zoom=zoom)
+                                          zoom=zoom,
+                                          channels=channels)
         else:
             self.renderer = None
         self.synthetic_prefs = synthetic_prefs
@@ -126,13 +127,22 @@ class PrefInterface:
         seg_len = len(s1)
         frame_shape = s1.frames[0][:, :, -1].shape
         for t in range(seg_len):
-            border = np.zeros((frame_shape[0], 10), dtype=np.uint8)
+            if t == 0:
+                print("Full s1 frames shape: {}".format(s1.frames[t].shape))
+                print("Final frame s1 shape: {}".format(s1.frames[t][:, :, -3].shape))
+
+            border = np.zeros((frame_shape[0], 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
             # TODO make this general across channels
-            frame = np.hstack((s1.frames[t][:, :, -3],
+            frame = np.hstack((s1.frames[t][:, :, -3:],
                                border,
-                               s2.frames[t][:, :, -3]))
+                               s2.frames[t][:, :, -3:]))
+            if t == 0:
+                print("Ask user frame size: {}".format(frame.shape))
+                converted_image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                cv2.imwrite("ask_user_frame.png", converted_image)
             vid.append(frame)
+        #TODO make this a parameter
         n_pause_frames = 7
         for _ in range(n_pause_frames):
             vid.append(np.copy(vid[-1]))

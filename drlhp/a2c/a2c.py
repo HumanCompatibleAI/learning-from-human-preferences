@@ -10,6 +10,7 @@ import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
 import readline
+import cv2
 
 from drlhp.a2c import logger
 from drlhp.a2c.utils import (cat_entropy, discount_with_dones,
@@ -162,9 +163,9 @@ class Runner(object):
     def update_obs(self, obs):
         # Do frame-stacking here instead of the FrameStack wrapper to reduce
         # IPC overhead
-        # TODO channel fix
-        self.obs = np.roll(self.obs, shift=-1, axis=3)
-        self.obs[:, :, :, -1] = obs[:, :, :, 0]
+        # TODO take more general channel values
+        self.obs = np.roll(self.obs, shift=-3, axis=3)
+        self.obs[:, :, :, -3:] = obs[:, :, :, 0:3]
 
     def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
         # Segments are only generated from the first worker.
@@ -177,7 +178,8 @@ class Runner(object):
         assert(e0_obs.shape[-1] % 4 == 0)
         assert_equal(e0_rew.shape[0], self.nsteps)
         assert_equal(e0_dones.shape[0], self.nsteps)
-
+        converted_image = cv2.cvtColor(e0_obs[0][:, :, -3:], cv2.COLOR_RGB2BGR)
+        cv2.imwrite("eo_obs_segment_buffer.png", converted_image)
         for step in range(self.nsteps):
             self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
             if len(self.segment) == 25 or e0_dones[step]:
@@ -204,7 +206,8 @@ class Runner(object):
             # Here we only need to send the last frame (the most recent one)
             # from the 4-frame stack, because we're just showing output to
             # the user.
-            self.episode_frames.append(e0_obs[step, :, :, -1])
+            # TODO make general for n_channels
+            self.episode_frames.append(e0_obs[step, :, :, -3])
             if e0_dones[step]:
                 self.episode_vid_queue.put(self.episode_frames)
                 self.episode_frames = []

@@ -9,6 +9,7 @@ import numpy as np
 import pyglet
 import pdb
 import sys
+import cv2
 
 from drlhp.a2c.common import wrap_deepmind
 from drlhp.a2c.common import set_global_seeds
@@ -68,18 +69,19 @@ class Im(object):
 
     def imshow(self, arr):
         if self.window is None:
-            height, width = arr.shape
+            height, width, channels = arr.shape
             self.window = pyglet.window.Window(
                 width=width, height=height, display=self.display)
             self.width = width
             self.height = height
+            self.channels = channels
             self.isopen = True
 
-        assert arr.shape == (self.height, self.width), \
+        assert arr.shape == (self.height, self.width, self.channels), \
             "You passed in an image with the wrong number shape"
 
         image = pyglet.image.ImageData(self.width, self.height,
-                                       'L', arr.tobytes(), pitch=-self.width)
+                                       'RGB', arr.tobytes())
         self.window.clear()
         self.window.switch_to()
         self.window.dispatch_events()
@@ -99,11 +101,15 @@ class VideoRenderer:
     play_through_mode = 0
     restart_on_get_mode = 1
 
-    def __init__(self, vid_queue, mode, zoom=1, playback_speed=1):
+    def __init__(self, vid_queue, mode, zoom=1, playback_speed=1, channels=3):
         assert mode == VideoRenderer.restart_on_get_mode or mode == VideoRenderer.play_through_mode
         self.mode = mode
         self.vid_queue = vid_queue
-        self.zoom_factor = zoom
+        self.channels = channels
+        if self.channels == 1:
+            self.zoom_factor = zoom
+        else:
+            self.zoom_factor = [zoom]*(self.channels-1) + [1]
         self.playback_speed = playback_speed
         self.proc = Process(target=self.render)
         self.proc.start()
@@ -117,12 +123,16 @@ class VideoRenderer:
         t = 0
         while True:
             # Add a grey dot on the last line showing position
-            width = frames[t].shape[1]
-            fraction_played = t / len(frames)
-            x = int(fraction_played * width)
-            frames[t][-1][x] = 128
+            # TODO add position dot back in
+            # width = frames[t].shape[1]
+            # fraction_played = t / len(frames)
+            # x = int(fraction_played * width)
+            # frames[t][-1][x] = 128
 
             zoomed_frame = zoom(frames[t], self.zoom_factor)
+            if t == 0:
+                print("zoom factor: {}".format(self.zoom_factor))
+                print("Zoomed frame dimension: {}".format(zoomed_frame.shape))
             v.imshow(zoomed_frame)
 
             if self.mode == VideoRenderer.play_through_mode:
