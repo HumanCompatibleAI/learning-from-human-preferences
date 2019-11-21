@@ -188,4 +188,4 @@ class PrefBuffer:
             if train_len >= min_len and val_len != 0:
                 break
             print("Waiting for preferences; {} so far".format(train_len))
-            time.sleep(120.0)
+            time.sleep(5.0)

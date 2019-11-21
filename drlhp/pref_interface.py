@@ -36,6 +36,7 @@ class PrefInterface:
         self.max_segs = max_segs
         easy_tf_log.set_dir(log_dir)
 
+
     def stop_renderer(self):
         if self.renderer:
             self.renderer.stop()
@@ -43,7 +44,7 @@ class PrefInterface:
     def run(self, seg_pipe, pref_pipe):
         while len(self.segments) < 2:
             print("Preference interface waiting for segments")
-            time.sleep(120.0)
+            time.sleep(5.0)
             self.recv_segments(seg_pipe)
 
         while True:

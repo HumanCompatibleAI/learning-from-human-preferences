@@ -66,7 +66,7 @@ def run(general_params,
             dropout=rew_pred_training_params['dropout'],
             lr=rew_pred_training_params['lr'],
             core_network=reward_predictor_network,
-            ob_shape=rew_pred_training_params['obs_shape'])
+            obs_shape=rew_pred_training_params['obs_shape'])
 
     save_make_reward_predictor(general_params['log_dir'],
                                make_reward_predictor)
@@ -297,6 +297,7 @@ def start_pref_interface(seg_pipe, pref_pipe, max_segs, synthetic_prefs,
                        log_dir=prefs_log_dir,
                        channels=channels,
                        zoom=zoom)
+    print("Preference interface has been created")
     proc = Process(target=f, daemon=True)
     proc.start()
     return pi, proc
@@ -318,7 +319,7 @@ def start_reward_predictor_training(cluster_dict,
     def f():
         rew_pred = make_reward_predictor('train', cluster_dict)
         rew_pred.init_network(load_ckpt_dir)
-
+        print("Reward predictor initialized")
         if prefs_dir is not None:
             train_path = osp.join(prefs_dir, 'train.pkl.gz')
             pref_db_train = PrefDB.load(train_path)
@@ -373,7 +374,7 @@ def start_reward_predictor_training(cluster_dict,
             rew_pred.train(pref_db_train, pref_db_val, val_interval)
             if i and i % ckpt_interval == 0:
                 rew_pred.save()
-
+    print("Got inside reward predictor training")
     proc = Process(target=f, daemon=True)
     proc.start()
     return proc
