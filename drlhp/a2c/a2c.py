@@ -327,7 +327,7 @@ def learn(policy,
           start_policy_training_pipe,
           ckpt_save_dir,
           lr_scheduler,
-          nsteps=5, # TODO work out how to change this back to 5
+          nsteps=5,
           nstack=4,
           total_timesteps=int(80e6),
           vf_coef=0.5,
@@ -350,7 +350,7 @@ def learn(policy,
     ob_space = deepcopy(env.observation_space)
     nh, nw, nc = ob_space.shape
     new_shape = (nh, nw, nc*nstack)
-    # # TODO make this more general!
+    # # TODO make this more general/pull zero and 255 out of existing obs space
     low, high = np.zeros(new_shape), np.full(new_shape, 255)
     ob_space.shape = new_shape
     ob_space.low = low
