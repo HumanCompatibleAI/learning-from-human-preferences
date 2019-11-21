@@ -182,8 +182,8 @@ class Runner(object):
         cv2.imwrite("eo_obs_segment_buffer.png", converted_image)
         for step in range(self.nsteps):
             self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
-            if len(self.segment) == 25 or e0_dones[step]:
-                while len(self.segment) < 25:
+            if len(self.segment) == 40 or e0_dones[step]:
+                while len(self.segment) < 40:
                     # Pad to 25 steps long so that all segments in the batch
                     # have the same length.
                     # Note that the reward predictor needs the full frame
