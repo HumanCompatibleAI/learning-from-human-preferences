@@ -79,9 +79,9 @@ class Im(object):
 
         assert arr.shape == (self.height, self.width, self.channels), \
             "You passed in an image with the wrong number shape"
-
+        flipped_arr = np.flip(arr, axis=0)
         image = pyglet.image.ImageData(self.width, self.height,
-                                       'RGB', arr.tobytes())
+                                       'RGB', flipped_arr.tobytes())
         self.window.clear()
         self.window.switch_to()
         self.window.dispatch_events()

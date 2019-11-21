@@ -143,7 +143,7 @@ class PrefInterface:
                 cv2.imwrite("ask_user_frame.png", converted_image)
             vid.append(frame)
         #TODO make this a parameter
-        n_pause_frames = 7
+        n_pause_frames = 12
         for _ in range(n_pause_frames):
             vid.append(np.copy(vid[-1]))
         self.vid_q.put(vid)
