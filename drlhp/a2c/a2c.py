@@ -15,7 +15,6 @@ import cv2
 from drlhp.a2c import logger
 from drlhp.a2c.utils import (cat_entropy, discount_with_dones,
                              find_trainable_variables, mse)
-from drlhp.utils import ForkedPdb
 from drlhp.a2c.common import explained_variance, set_global_seeds
 from drlhp.pref_db import Segment
 
@@ -80,13 +79,15 @@ class Model(object):
             for _ in range(n_steps):
                 cur_lr = lr_scheduler.value()
             td_map = {
-                train_model.X: obs,
+                train_model.obs_ph: obs,
                 A: actions,
                 ADV: advs,
                 R: rewards,
                 LR: cur_lr
             }
-            if states != []:
+
+            if states:
+                # TODO make this work for newer stateful policies
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
             policy_loss, value_loss, policy_entropy, _ = sess.run(
@@ -222,6 +223,7 @@ class Runner(object):
         for _ in range(self.nsteps):
             actions, values, states, _ = self.model.step(self.obs, self.states,
                                                       self.dones)
+            # actions here are of shape (1, 11)
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
             mb_values.append(values)
@@ -316,11 +318,19 @@ class Runner(object):
             else:
                 rewards = discount_with_dones(rewards, dones, self.gamma)
             mb_rewards[n] = rewards
+        # Well, there's the culprit
 
-        mb_rewards = mb_rewards.flatten()
-        mb_actions = mb_actions.flatten()
-        mb_values = mb_values.flatten()
-        mb_masks = mb_masks.flatten()
+        def flatten_correctly(arr):
+            assert arr.shape[0] == 1
+            new_shape = arr.shape[1:]
+            return arr.reshape(new_shape)
+
+        mb_rewards = flatten_correctly(mb_rewards)
+        mb_actions = flatten_correctly(mb_actions)
+        mb_values = flatten_correctly(mb_values)
+        mb_masks = flatten_correctly(mb_masks)
+
+
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
 
@@ -339,7 +349,7 @@ def learn(policy,
           epsilon=1e-5,
           alpha=0.99,
           gamma=0.99,
-          log_interval=100,
+          log_interval=25,
           ckpt_save_interval=1000,
           ckpt_load_dir=None,
           gen_segments=False,
@@ -424,14 +434,13 @@ def learn(policy,
             break
 
     print("Starting policy training")
-
+    print("Max val: {}".format(total_timesteps // nbatch + 1))
     for update in range(1, total_timesteps // nbatch + 1):
         # Run for nsteps
-        obs, states, rewards, masks, actions, values = runner.run()
 
+        obs, states, rewards, masks, actions, values = runner.run()
         policy_loss, value_loss, policy_entropy, cur_lr = model.train(
             obs, states, rewards, masks, actions, values)
-
         fps_nsteps += nbatch
 
         if update % log_interval == 0 and update != 0:

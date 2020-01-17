@@ -369,6 +369,7 @@ def start_reward_predictor_training(cluster_dict,
         
         i = 0
         while True:
+            time.sleep(30)
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
             save_prefs(log_dir, pref_db_train, pref_db_val)
             rew_pred.train(pref_db_train, pref_db_val, val_interval)
