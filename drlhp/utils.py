@@ -130,9 +130,6 @@ class VideoRenderer:
             # frames[t][-1][x] = 128
 
             zoomed_frame = zoom(frames[t], self.zoom_factor)
-            if t == 0:
-                print("zoom factor: {}".format(self.zoom_factor))
-                print("Zoomed frame dimension: {}".format(zoomed_frame.shape))
             v.imshow(zoomed_frame)
 
             if self.mode == VideoRenderer.play_through_mode:

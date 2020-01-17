@@ -115,8 +115,9 @@ class PrefDB:
         return len(self.prefs)
 
     def save(self, path):
+        #ForkedPdb().set_trace()
         with gzip.open(path, 'wb') as pkl_file:
-            pickle.dump(self, pkl_file)
+            pickle.dump(copy.deepcopy(self), pkl_file)
 
     @staticmethod
     def load(path):
@@ -180,12 +181,16 @@ class PrefBuffer:
         return train_copy, val_copy
 
     def wait_until_len(self, min_len):
+        min_val_len = int(0.3*min_len)
         while True:
             self.lock.acquire()
             train_len = len(self.train_db)
             val_len = len(self.val_db)
             self.lock.release()
-            if train_len >= min_len and val_len != 0:
+            if train_len >= min_len: # and val_len > min_val_len:
                 break
-            print("Waiting for preferences; {} so far".format(train_len))
+            print("Waiting for preferences; {}/{} train so far, {}/{} val ".format(train_len,
+                                                                                   min_len,
+                                                                                   val_len,
+                                                                                   min_val_len))
             time.sleep(5.0)

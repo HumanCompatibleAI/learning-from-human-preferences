@@ -78,6 +78,7 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
+
                 pref_pipe.put((s1.frames, s2.frames, pref))
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
@@ -127,20 +128,12 @@ class PrefInterface:
         seg_len = len(s1)
         frame_shape = s1.frames[0][:, :, -1].shape
         for t in range(seg_len):
-            if t == 0:
-                print("Full s1 frames shape: {}".format(s1.frames[t].shape))
-                print("Final frame s1 shape: {}".format(s1.frames[t][:, :, -3].shape))
-
             border = np.zeros((frame_shape[0], 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
             # TODO make this general across channels
             frame = np.hstack((s1.frames[t][:, :, -3:],
                                border,
                                s2.frames[t][:, :, -3:]))
-            if t == 0:
-                print("Ask user frame size: {}".format(frame.shape))
-                converted_image = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                cv2.imwrite("ask_user_frame.png", converted_image)
             vid.append(frame)
         #TODO make this a parameter
         n_pause_frames = 12

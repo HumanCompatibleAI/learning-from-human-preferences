@@ -27,32 +27,35 @@ class RewardPredictorEnsemble:
                  log_dir=None):
         self.n_preds = n_preds
         self.obs_shape = obs_shape
-        graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
+        self.sess = tf.Session()
+        graph = tf.get_default_graph()
+        #graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
         # Why not just use soft device placement? With soft placement,
         # if we have a bug which prevents an operation being placed on the GPU
         # (e.g. we're using uint8s for operations that the GPU can't do),
         # then TensorFlow will be silent and just place the operation on a CPU.
         # Instead, we want to say: if there's a GPU present, definitely try and
         # put things on the GPU. If it fails, tell us!
-        if tf.test.gpu_device_name():
-            worker_device = "/job:{}/task:0/gpu:0".format(cluster_job_name)
-        else:
-            worker_device = "/job:{}/task:0".format(cluster_job_name)
-        device_setter = tf.train.replica_device_setter(
-            cluster=cluster_dict,
-            ps_device="/job:ps/task:0",
-            worker_device=worker_device)
+
+        # if tf.test.gpu_device_name():
+        #     worker_device = "/job:{}/task:0/gpu:0".format(cluster_job_name)
+        # else:
+        #     worker_device = "/job:{}/task:0".format(cluster_job_name)
+        # device_setter = tf.train.replica_device_setter(
+        #     cluster=cluster_dict,
+        #     ps_device="/job:ps/task:0",
+        #     worker_device=worker_device)
         self.rps = []
         with graph.as_default():
             for pred_n in range(n_preds):
-                with tf.device(device_setter):
-                    with tf.variable_scope("pred_{}".format(pred_n)):
-                        rp = RewardPredictorNetwork(
-                            core_network=core_network,
-                            dropout=dropout,
-                            batchnorm=batchnorm,
-                            lr=lr,
-                            obs_shape=self.obs_shape)
+                #with tf.device(device_setter):
+                with tf.variable_scope("pred_{}".format(pred_n)):
+                    rp = RewardPredictorNetwork(
+                        core_network=core_network,
+                        dropout=dropout,
+                        batchnorm=batchnorm,
+                        lr=lr,
+                        obs_shape=self.obs_shape)
                 self.rps.append(rp)
             self.init_op = tf.global_variables_initializer()
             # Why save_relative_paths=True?
@@ -62,6 +65,9 @@ class RewardPredictorEnsemble:
             self.saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
             self.summaries = self.add_summary_ops()
 
+        # Try to fix bug, based on here https://stackoverflow.com/questions/34001922/failedpreconditionerror-attempting-to-use-uninitialized-in-tensorflow
+        init_op = tf.global_variables_initializer()
+        self.sess.run(init_op)
         self.checkpoint_file = osp.join(log_dir,
                                         'reward_predictor_checkpoints',
                                         'reward_predictor.ckpt')
@@ -252,9 +258,11 @@ class RewardPredictorEnsemble:
             feed_dict[rp.s2] = s2s
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = True
-        ops = [self.summaries, [rp.train for rp in self.rps]]
-        summaries, _ = self.sess.run(ops, feed_dict)
-        self.train_writer.add_summary(summaries, self.n_steps)
+        # TODO add self.summaries back in
+        ops = [[rp.train for rp in self.rps]] #self.summaries,
+        # TODO  also add summaries back into return val
+        _ = self.sess.run(ops, feed_dict)
+        #self.train_writer.add_summary(summaries, self.n_steps)
 
     def val_step(self, prefs_val):
         val_batch_size = 32
