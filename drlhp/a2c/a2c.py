@@ -179,6 +179,7 @@ class Runner(object):
         assert(e0_obs.shape[-1] % 4 == 0)
         assert_equal(e0_rew.shape[0], self.nsteps)
         assert_equal(e0_dones.shape[0], self.nsteps)
+        # TODO generalize across num_channels
         converted_image = cv2.cvtColor(e0_obs[0][:, :, -3:], cv2.COLOR_RGB2BGR)
         cv2.imwrite("eo_obs_segment_buffer.png", converted_image)
         for step in range(self.nsteps):
@@ -207,7 +208,7 @@ class Runner(object):
             # Here we only need to send the last frame (the most recent one)
             # from the 4-frame stack, because we're just showing output to
             # the user.
-            # TODO make general for n_channels
+            # TODO make general for num_channels
             self.episode_frames.append(e0_obs[step, :, :, -3])
             if e0_dones[step]:
                 self.episode_vid_queue.put(self.episode_frames)
@@ -284,7 +285,9 @@ class Runner(object):
         if self.reward_predictor:
             assert_equal(mb_obs.shape[0], nenvs)
             assert_equal(mb_obs.shape[1], self.nsteps)
+            # TODO make general to stacking sizes other than 4
             assert(mb_obs.shape[-1] % 4 == 0)
+            # TODO make general across num_channels
             h, w, c = mb_obs.shape[-3:]
             mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, h, w, c)
 
@@ -329,7 +332,6 @@ class Runner(object):
         mb_actions = flatten_correctly(mb_actions)
         mb_values = flatten_correctly(mb_values)
         mb_masks = flatten_correctly(mb_masks)
-
 
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
