@@ -49,6 +49,8 @@ class RewardPredictorEnsemble:
         with graph.as_default():
             for pred_n in range(n_preds):
                 #with tf.device(device_setter):
+
+                # Create pred_n different reward predictors, each of which are in their own variable scope
                 with tf.variable_scope("pred_{}".format(pred_n)):
                     rp = RewardPredictorNetwork(
                         core_network=core_network,
@@ -306,7 +308,7 @@ class RewardPredictorNetwork:
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
         h, w, c = obs_shape
-        # TODO explicitly pass nstack in here
+        # TODO explicitly pass nstack in here, rather than it just using 4 by default
         s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
         s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
         # For each trajectory segment, there is one human judgement.

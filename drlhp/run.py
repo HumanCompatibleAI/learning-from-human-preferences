@@ -38,15 +38,30 @@ def run(general_params,
         a2c_params,
         pref_interface_params,
         rew_pred_training_params):
-    seg_pipe = Queue(maxsize=1)
-    pref_pipe = Queue(maxsize=1)
+
+    # SANITY CHECKS
+    assert ('env' in a2c_params) != (
+                'env_id' in a2c_params), "At least and only one of env or env_id should be passed in"
+
+
+    # CREATE COORDINATION QUEUES
+    seg_pipe = Queue(maxsize=1)  # Passed into the Runner, where it's used by update_segment_buffer
+    pref_pipe = Queue(maxsize=1) # Feeds into PrefBuffer, which feeds into PrefDB
     start_policy_training_flag = Queue(maxsize=1)
-    assert ('env' in a2c_params) != ('env_id' in a2c_params), "At least and only one of env or env_id should be passed in"
+
+
+    # CREATE VIDEO_RENDERER and EPISODE_VID_QUEUE
+    # This works by creating a queue and then having that be the input process for the VideoRenderer, and then
+    # passing back both the renderer and the queue that feeds it
     if general_params['render_episodes']:
+        # episode_vid_queue gets added to by Runner.update_episode_frame_buffer
         episode_vid_queue, episode_renderer = start_episode_renderer()
     else:
         episode_vid_queue = episode_renderer = None
 
+
+    # CHOOSE REWARD PREDICTOR
+    # Determine which reward predictor network (a function) to use, and create the make_reward_predictor() function
     reward_predictor_network = rew_pred_training_params.get('reward_predictor_network')
     if reward_predictor_network is None:
         if a2c_params['env_id'] in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
@@ -70,6 +85,12 @@ def run(general_params,
 
     save_make_reward_predictor(general_params['log_dir'],
                                make_reward_predictor)
+
+
+
+    # CASE: GATHER INITIAL PREFERENCES
+    # My read of what's happening here is that we call start_policy_training because this triggers the Runner to start
+    # running and collecting episodes that can be used in the pref interface
 
     if general_params['mode'] == 'gather_initial_prefs':
         env, a2c_proc = start_policy_training(
@@ -102,8 +123,10 @@ def run(general_params,
         pi.stop_renderer()
         a2c_proc.terminate()
         pref_buffer.stop_recv_thread()
-
         env.close()
+
+
+    # CASE: ASSUMES prefs_dir EXISTS AND PRETRAINS REWARD PREDICTOR
     elif general_params['mode'] == 'pretrain_reward_predictor':
         cluster_dict = create_cluster_dict(['ps', 'train'])
         ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
@@ -123,6 +146,8 @@ def run(general_params,
             log_dir=general_params['log_dir'])
         rpt_proc.join()
         ps_proc.terminate()
+
+    # TRAIN POLICY FROM NORMAL REWARDS FOR COMPARISON
     elif general_params['mode'] == 'train_policy_with_original_rewards':
         env, a2c_proc = start_policy_training(
             cluster_dict=None,
@@ -136,6 +161,7 @@ def run(general_params,
         start_policy_training_flag.put(True)
         a2c_proc.join()
         env.close()
+
     elif general_params['mode'] == 'train_policy_with_preferences':
         cluster_dict = create_cluster_dict(['ps', 'a2c', 'train'])
         ps_proc = start_parameter_server(cluster_dict, make_reward_predictor)
@@ -181,7 +207,7 @@ def run(general_params,
     if episode_renderer:
         episode_renderer.stop()
 
-
+# SAVE OUT PREFDBs
 def save_prefs(log_dir, pref_db_train, pref_db_val):
     train_path = osp.join(log_dir, 'train.pkl.gz')
     pref_db_train.save(train_path)
@@ -190,7 +216,7 @@ def save_prefs(log_dir, pref_db_train, pref_db_val):
     pref_db_val.save(val_path)
     print("Saved validation preferences to '{}'".format(val_path))
 
-
+# SAVE OUT FUNCTION TO MAKE REWARD PREDICTOR
 def save_make_reward_predictor(log_dir, make_reward_predictor):
     save_dir = osp.join(log_dir, 'reward_predictor_checkpoints')
     os.makedirs(save_dir, exist_ok=True)
@@ -198,6 +224,8 @@ def save_make_reward_predictor(log_dir, make_reward_predictor):
         fh.write(cloudpickle.dumps(make_reward_predictor))
 
 
+# SOMETHING WITH MULTIPROCESSING?
+# What is a cluster dict....
 def create_cluster_dict(jobs):
     n_ports = len(jobs) + 1
     ports = get_port_range(start_port=2200,
@@ -215,8 +243,7 @@ def configure_a2c_logger(log_dir):
     tb = logger.TensorBoardOutputFormat(a2c_dir)
     logger.Logger.CURRENT = logger.Logger(dir=a2c_dir, output_formats=[tb])
 
-
-
+# IDK WHAT THIS IS DOING
 def start_parameter_server(cluster_dict, make_reward_predictor):
     def f():
         make_reward_predictor('ps', cluster_dict)
