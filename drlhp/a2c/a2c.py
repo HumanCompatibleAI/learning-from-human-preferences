@@ -41,14 +41,20 @@ class Model(object):
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
         train_batch = nenvs * nsteps
+        # CHANGE: A2C has separate variables for n_batch_step and n_batch_train
         print("Create placeholders")
+
         #TODO check that this works for other action spaces
+
+        # CHANGE: A2C hs tehse have shape None rather than shape train_batch
         A = tf.placeholder(tf.int32, [train_batch] + list(ac_space.shape))
         ADV = tf.placeholder(tf.float32, [train_batch])
         R = tf.placeholder(tf.float32, [train_batch])
         LR = tf.placeholder(tf.float32, [])
 
         print("Initialize policy objects")
+        # CHANGE: A2C allows you to pass in policy_kwargs at this juncture
+        # This would make it way easier to do
         step_model = policy(
             sess, ob_space, ac_space, nenvs, 1, nenvs, reuse=False)
         train_model = policy(
@@ -56,12 +62,12 @@ class Model(object):
 
         neglogpac = train_model.proba_distribution.neglogp(A)
 
-        # Is the error a function of the different loss terms?
         pg_loss = tf.reduce_mean(ADV * neglogpac)
         vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.value_fn), R))
         entropy = tf.reduce_mean(train_model.proba_distribution.entropy())
         loss = pg_loss + vf_loss * vf_coef - entropy * ent_coef
 
+        # CHANGE: A2C uses tf_util.get_trainable_vars("model")
         params = find_trainable_variables("model")
 
         grads = tf.gradients(loss, params)
@@ -72,8 +78,10 @@ class Model(object):
         trainer = tf.train.RMSPropOptimizer(
             learning_rate=LR, decay=alpha, epsilon=epsilon)
         _train = trainer.apply_gradients(grads)
+        # CHANGE: In A2C, global_variables_initializer() is run here
 
         def train(obs, states, rewards, masks, actions, values):
+            # Equivalent of _train_step() in A2C
             advs = rewards - values
             n_steps = len(obs)
             for _ in range(n_steps):
@@ -135,7 +143,14 @@ class Runner(object):
         self.model = model
         nh, nw, nc = env.observation_space.shape
         nenv = env.num_envs
+
+        # CHANGE: In A2C, this is defined as being of shape
+        # (n_env*n_steps, nh, nw, nc)
+        # Assuming that env.observation_space.shape = (nh, nw, nc)
         self.batch_ob_shape = (nenv * nsteps, nh, nw, nc * nstack)
+
+        # CHANGE: In A2C, this is defined as being of shape
+        # (n__env, nh, nw, nc) According to the same observation space assumption
         self.obs = np.zeros((nenv, nh, nw, nc * nstack), dtype=np.uint8)
         # The first stack of 4 frames: the first 3 frames are zeros,
         # with the last frame coming from env.reset().
@@ -225,6 +240,9 @@ class Runner(object):
             actions, values, states, _ = self.model.step(self.obs, self.states,
                                                       self.dones)
             # actions here are of shape (1, 11)
+
+            # IMPORTANT: Here we are adding multiple copies of the
+            # stacked version of obs, and that's what we pass to the update_segment_buffer
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
             mb_values.append(values)
@@ -289,6 +307,8 @@ class Runner(object):
             assert(mb_obs.shape[-1] % 4 == 0)
             # TODO make general across num_channels
             h, w, c = mb_obs.shape[-3:]
+
+            # TODO figure out what this reshape is doing here and whether it's necessary pre-reward-predictor
             mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, h, w, c)
 
             rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
