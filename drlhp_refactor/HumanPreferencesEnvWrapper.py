@@ -12,6 +12,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.train_reward = True # A boolean for whether reward predictor is frozen or actively being trained
 
     def _pretrain_reward_predictor(self):
+        x = 1
         # Sort of unclear if this should live on the env or not, since you need to have some policy for
         # determining how to take the steps used for pretraining, which makes it feel like more the purview of a runner than an EnvWrapper
         # We could have two modes for the env, one for "auto-train" and one for "collect preferences," and in the latter mode,
@@ -26,6 +27,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
 
     def _query_for_reward(self):
         while True:
+            x = 1
             # Check if seg_pipe has things in it
             # If so, tell PrefInterface to query for human comparison
             # If not, sleep for some period based on debugging vs not
