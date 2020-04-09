@@ -16,11 +16,9 @@ class RewardPredictorEnsemble:
     """
 
     def __init__(self,
-                 cluster_job_name,
                  core_network,
                  obs_shape,
                  lr=1e-4,
-                 cluster_dict=None,
                  batchnorm=False,
                  dropout=0.0,
                  n_preds=1,
