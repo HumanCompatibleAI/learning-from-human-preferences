@@ -115,7 +115,6 @@ class PrefDB:
         return len(self.prefs)
 
     def save(self, path):
-        #ForkedPdb().set_trace()
         with gzip.open(path, 'wb') as pkl_file:
             pickle.dump(copy.deepcopy(self), pkl_file)
 
@@ -163,6 +162,8 @@ class PrefBuffer:
             else:
                 self.train_db.append(s1, s2, pref)
                 easy_tf_log.tflog('train_db_len', len(self.train_db))
+
+            #print(f"Preference received! Len train: {len(self.train_db)} Len val: {len(self.val_db)}")
             self.lock.release()
 
             easy_tf_log.tflog('n_prefs_recvd', n_recvd)

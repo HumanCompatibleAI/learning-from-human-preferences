@@ -15,6 +15,7 @@ import easy_tf_log
 import numpy as np
 import cv2
 from drlhp.utils import VideoRenderer
+from drlhp.utils import ForkedPdb
 
 
 class PrefInterface:
@@ -43,8 +44,10 @@ class PrefInterface:
             self.renderer.stop()
 
     def run(self, seg_pipe, pref_pipe):
+        self.recv_segments(seg_pipe)
+
         while len(self.segments) < 2:
-            print("Preference interface waiting for segments")
+            #print("Preference interface waiting for segments")
             time.sleep(5.0)
             self.recv_segments(seg_pipe)
 
@@ -78,7 +81,6 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
-
                 pref_pipe.put((s1.frames, s2.frames, pref))
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
