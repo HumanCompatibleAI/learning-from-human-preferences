@@ -1,3 +1,6 @@
+import tensorflow.compat.v1 as tf
+tf.logging.set_verbosity(tf.logging.ERROR)
+
 import logging
 import os.path as osp
 import time
@@ -5,7 +8,6 @@ import time
 import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
-import tensorflow as tf
 
 from drlhp.utils import RunningStat, batch_iter
 
@@ -307,16 +309,18 @@ class RewardPredictorNetwork:
         # (Dimensions are n segments x n frames per segment x ...)
         h, w, c = obs_shape
         # TODO explicitly pass nstack in here, rather than it just using 4 by default
-        s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
-        s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c*4))
+        # NOTE FOR FUTURE used to be c*4
+        s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
+        s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
         # For each trajectory segment, there is one human judgement.
         pref = tf.placeholder(tf.float32, shape=(None, 2))
 
         # Concatenate trajectory segments so that the first dimension is just
         # frames
         # (necessary because of conv layer's requirements on input shape)
-        s1_unrolled = tf.reshape(s1, [-1, h, w, c*4])
-        s2_unrolled = tf.reshape(s2, [-1, h, w, c*4])
+        # NOTE FOR FUTURE: used to be c*4
+        s1_unrolled = tf.reshape(s1, [-1, h, w, c])
+        s2_unrolled = tf.reshape(s2, [-1, h, w, c])
 
         # Predict rewards for each frame in the unrolled batch
         _r1 = core_network(

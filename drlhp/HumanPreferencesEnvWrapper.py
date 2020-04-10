@@ -9,19 +9,15 @@ from multiprocessing import Process, Queue
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
+from drlhp.utils import ForkedPdb
 
-def save_prefs(log_dir, pref_db_train, pref_db_val):
-    train_path = osp.join(log_dir, 'train.pkl.gz')
-    pref_db_train.save(train_path)
-    print("Saved training preferences to '{}'".format(train_path))
-    val_path = osp.join(log_dir, 'val.pkl.gz')
-    pref_db_val.save(val_path)
-    print("Saved validation preferences to '{}'".format(val_path))
+
+
 
 class HumanPreferencesEnvWrapper(Wrapper):
     def __init__(self, env, reward_predictor_network, preference_interface,
                  just_pretrain=False, just_collect_prefs=False,
-                 nstack=4, segment_length=40):
+                 nstack=4, segment_length=40, n_initial_epochs=0, n_initial_prefs=40):
         super(HumanPreferencesEnvWrapper, self).__init__(env)
         self.seg_pipe = Queue(maxsize=1)
         self.pref_pipe = Queue(maxsize=1)
@@ -36,35 +32,60 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.obs_stack = np.zeros((self.obs_shape[0], self.obs_shape[1], self.obs_shape[2] * nstack), dtype=np.uint8)
 
         self.pref_interface_proc = None
+        self.reward_training_proc = None
         self.prefs_dir = None
+
         self.n_prefs_train = 100
         self.n_prefs_test = 100
-        self.n_initial_prefs = 10
-        self.n_initial_epochs = 10
-        self.reward_predictor_sleep_interval = 30
+        self.n_initial_prefs = n_initial_prefs
+        self.n_initial_epochs = n_initial_epochs
+        self.reward_predictor_sleep_interval = 10
         self.pref_buffer = None
         self.max_prefs = 200
         self.log_dir = "drlhp_logs/"
         self.val_interval = 10
         self.ckpt_interval = 10
-        self.just_pretrain = False
-        self.reward_training_proc = None
+        self.just_pretrain = just_pretrain
+        self.just_collect_prefs = just_collect_prefs
 
-        self.reward_predictor = RewardPredictorEnsemble(
-            core_network=reward_predictor_network,
-            log_dir=self.log_dir,
-            batchnorm=False,
-            dropout=False,
-            lr=False,
-            obs_shape=False)
+        self.reward_training_iters = 0
+        self.last_reward_training_time = time.time()
+        self.last_reward_training_size = 0
+        self.reward_training_pref_diff = 5
 
+        if just_collect_prefs:
+            self.reward_predictor = None
+        else:
+            self.reward_predictor = RewardPredictorEnsemble(
+                core_network=reward_predictor_network,
+                log_dir=self.log_dir,
+                batchnorm=False,
+                dropout=0.0,
+                lr=7e-4,
+                obs_shape=self.obs_shape)
+            self.reward_predictor.init_network()
+
+        self._start_pref_interface()
+        self._load_or_create_pref_db()
+        if n_initial_prefs > 0:
+            self._train_reward_predictor()
+
+
+
+    def _save_prefs(self):
+        pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
+        train_path = osp.join(self.log_dir, 'train.pkl.gz')
+        pref_db_train.save(train_path)
+        print("Saved training preferences to '{}'".format(train_path))
+        val_path = osp.join(self.log_dir, 'val.pkl.gz')
+        pref_db_val.save(val_path)
+        print("Saved validation preferences to '{}'".format(val_path))
 
     def _start_pref_interface(self):
         def f():
             sys.stdin = os.fdopen(0)
             self.preference_interface.run(seg_pipe=self.seg_pipe,
                                           pref_pipe=self.pref_pipe)
-
         self.pref_interface_proc = Process(target=f, daemon=True)
         self.pref_interface_proc.start()
 
@@ -90,53 +111,43 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.pref_buffer = PrefBuffer(db_train=pref_db_train,
                                  db_val=pref_db_val)
         self.pref_buffer.start_recv_thread(self.pref_pipe)
-        if self.prefs_dir is None:
-            self.pref_buffer.wait_until_len(self.n_initial_prefs)
 
-        save_prefs(self.log_dir, pref_db_train, pref_db_val)
+
+    def _pretrain_reward_predictor(self):
+        print(f"Pretraining reward predictor for {self.n_initial_epochs} epochs")
+        pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
+        for i in range(self.n_initial_epochs):
+            print("Reward predictor training epoch {}".format(i))
+            self.reward_predictor.train(pref_db_train, pref_db_val, self.val_interval)
+            if i and i % self.ckpt_interval == 0:
+                self.reward_predictor.save()
+        self.start_policy_training_flag.put(True)
 
     def _train_reward_predictor(self):
-        if self.n_initial_epochs > 0:
-            print(f"Pretraining reward predictor for {self.n_initial_epochs} epochs")
-            pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
-            for i in range(self.n_initial_epochs):
-                print("Reward predictor training epoch {}".format(i))
-                self.reward_predictor.train(pref_db_train, pref_db_val, self.val_interval)
-                if i and i % self.ckpt_interval == 0:
-                    self.reward_predictor.save()
-        if self.just_pretrain:
-            return
+        # cur_time = time.time()
+        # if cur_time - self.last_reward_training_time > self.reward_predictor_sleep_interval:
+        pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
+        cur_train_size = len(pref_db_train)
+        if cur_train_size - self.last_reward_training_size >= self.reward_training_pref_diff:
+            print(f"Training reward predictor on {cur_train_size} preferences")
+            self._save_prefs()
+            self.reward_predictor.train(pref_db_train, pref_db_val, self.val_interval)
+            if self.reward_training_iters and self.reward_training_iters % self.ckpt_interval == 0:
+                self.reward_predictor.save()
+            self.reward_training_iters += 1
+            self.last_reward_training_size = cur_train_size
+            self.last_reward_training_time = time.time()
 
-        self.start_policy_training_pipe.put(True)
-
-        def f():
-            train_iter = 0
-            while True:
-                time.sleep(self.reward_predictor_sleep_interval)
-                pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
-                save_prefs(self.log_dir, pref_db_train, pref_db_val)
-                self.reward_predictor.train(pref_db_train, pref_db_val, self.val_interval)
-                if train_iter and train_iter % self.ckpt_interval == 0:
-                    self.reward_predictor.save()
-        self.reward_training_proc = Process(target=f, daemon=True)
-        self.reward_training_proc.start()
-
-    def _update_obs_stack(self, obs):
-        # TODO replace with FrameStack wrapper?
-        channels = self.obs_shape[-1]
-        self.obs_stack = np.roll(self.obs_stack, shift=1 - self.nstack, axis=-1)
-        self.obs_stack[:, :, :, -channels:] = obs[:, :, :, 0:channels]
-
-    def _update_episode_segment(self, reward, done):
-        self.episode_segment.append(np.copy(self.obs_stack), np.copy(reward))
+    def _update_episode_segment(self, obs, reward, done):
+        self.episode_segment.append(np.copy(obs), np.copy(reward))
         if done:
             while len(self.episode_segment) < self.segment_length:
-                self.episode_segment.append(np.copy(self.obs_stack), 0)
+                self.episode_segment.append(np.copy(obs), 0)
 
         if len(self.episode_segment) == self.segment_length:
             self.episode_segment.finalise()
             try:
-                self.seg_pipe.put(self.segment, block=False)
+                self.seg_pipe.put(self.episode_segment, block=False)
             except queue.Full:
                 # If the preference interface has a backlog of segments
                 # to deal with, don't stop training the agents. Just drop
@@ -144,17 +155,11 @@ class HumanPreferencesEnvWrapper(Wrapper):
                 pass
             self.episode_segment = Segment()
 
-    def _query_for_reward(self):
-        # should now contain the last k frames
-        return self.reward_predictor.reward(self.obs_stack)
 
-    def reset(self):
-        obs = self.env.reset()
-        self._update_obs_stack(obs)
 
     def step(self, action):
-        obs, reward, done, info = self.env(action)
-        self._update_obs_stack(obs)
-        self._update_segment_buffer(reward, done)
-        predicted_reward = self._query_for_reward()
+        obs, reward, done, info = self.env.step(action)
+        self._update_episode_segment(obs, reward, done)
+        predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
+        self._train_reward_predictor()
         return obs, predicted_reward, done, info
