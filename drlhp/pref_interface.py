@@ -151,7 +151,8 @@ class PrefInterface:
         self.vid_q.put(vid)
 
         while True:
-            print("Segments {} and {}: ".format(s1.hash, s2.hash))
+            print("Choose between segments {} and {}: ".format(s1.hash, s2.hash))
+            self.renderer.render()
             choice = input()
             # L = "I prefer the left segment"
             # R = "I prefer the right segment"

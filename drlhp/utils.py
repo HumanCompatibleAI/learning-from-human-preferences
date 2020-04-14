@@ -111,8 +111,8 @@ class VideoRenderer:
         else:
             self.zoom_factor = [zoom]*(self.channels-1) + [1]
         self.playback_speed = playback_speed
-        self.proc = Process(target=self.render)
-        self.proc.start()
+        # self.proc = Process(target=self.render, daemon=True)
+        # self.proc.start()
 
     def stop(self):
         self.proc.terminate()
@@ -138,21 +138,22 @@ class VideoRenderer:
                 # recent set of frames.
                 t += self.playback_speed
                 if t >= len(frames):
-                    frames = self.get_queue_most_recent()
-                    t = 0
+                    return
+                    # frames = self.get_queue_most_recent()
+                    # t = 0
                 else:
                     time.sleep(1/60)
-            elif self.mode == VideoRenderer.restart_on_get_mode:
-                # Always try and get a new set of frames to show.
-                # If there is a new set of frames on the queue,
-                # restart playback with those frames immediately.
-                # Otherwise, just keep looping with the current frames.
-                try:
-                    frames = self.vid_queue.get(block=False)
-                    t = 0
-                except queue.Empty:
-                    t = (t + self.playback_speed) % len(frames)
-                    time.sleep(1/60)
+            # elif self.mode == VideoRenderer.restart_on_get_mode:
+            #     # Always try and get a new set of frames to show.
+            #     # If there is a new set of frames on the queue,
+            #     # restart playback with those frames immediately.
+            #     # Otherwise, just keep looping with the current frames.
+            #     try:
+            #         frames = self.vid_queue.get(block=False)
+            #         t = 0
+            #     except queue.Empty:
+            #         t = (t + self.playback_speed) % len(frames)
+            #         time.sleep(1/60)
 
     def get_queue_most_recent(self):
         # Make sure we at least get something
