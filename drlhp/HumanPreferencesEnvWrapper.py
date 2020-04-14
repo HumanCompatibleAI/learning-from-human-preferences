@@ -70,8 +70,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         if n_initial_prefs > 0:
             self._train_reward_predictor()
 
-
-
     def _save_prefs(self):
         pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
         train_path = osp.join(self.log_dir, 'train.pkl.gz')

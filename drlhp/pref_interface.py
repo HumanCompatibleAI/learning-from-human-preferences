@@ -7,6 +7,7 @@ A simple CLI-based interface for querying the user about segment preferences.
 import logging
 import queue
 import time
+from copy import deepcopy
 from itertools import combinations
 from multiprocessing import Queue
 from random import shuffle
@@ -38,7 +39,6 @@ class PrefInterface:
         self.max_segs = max_segs
         easy_tf_log.set_dir(log_dir)
 
-
     def stop_renderer(self):
         if self.renderer:
             self.renderer.stop()
@@ -47,10 +47,10 @@ class PrefInterface:
         self.recv_segments(seg_pipe)
 
         while len(self.segments) < 2:
-            #print("Preference interface waiting for segments")
             time.sleep(5.0)
             self.recv_segments(seg_pipe)
 
+        print("Preference interface has more than two segments, starting to test")
         while True:
             seg_pair = None
             while seg_pair is None:
@@ -61,11 +61,11 @@ class PrefInterface:
                           "waiting...")
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
-                    time.sleep(1.0)
+                    time.sleep(5.0)
                     self.recv_segments(seg_pipe)
             s1, s2 = seg_pair
 
-            logging.debug("Querying preference for segments %s and %s",
+            logging.info("Querying preference for segments %s and %s",
                           s1.hash, s2.hash)
 
             if not self.synthetic_prefs:
@@ -81,6 +81,7 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
+
                 pref_pipe.put((s1.frames, s2.frames, pref))
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
@@ -97,8 +98,11 @@ class PrefInterface:
         while time.time() - start_time < max_wait_seconds:
             try:
                 segment = seg_pipe.get(block=True, timeout=max_wait_seconds)
+                logging.debug("Got segment")
             except queue.Empty:
+                logging.debug("Segment queue empty")
                 return
+
             if len(self.segments) < self.max_segs:
                 self.segments.append(segment)
             else:
@@ -116,12 +120,15 @@ class PrefInterface:
         segment_idxs = list(range(len(self.segments)))
         shuffle(segment_idxs)
         possible_pairs = combinations(segment_idxs, 2)
+        logging.debug(f"Num segments: {len(self.segments)}")
+        logging.debug(f"Possible pairs: {len(list(deepcopy(possible_pairs)))}")
+        logging.debug(f"Tested pairs: {len(self.tested_pairs)}")
         for i1, i2 in possible_pairs:
+            i1, i2 = min(i1, i2), max(i1, i2)
+            # these should now always be in a canonical order
             s1, s2 = self.segments[i1], self.segments[i2]
-            if ((s1.hash, s2.hash) not in self.tested_pairs) and \
-               ((s2.hash, s1.hash) not in self.tested_pairs):
+            if (s1.hash, s2.hash) not in self.tested_pairs:
                 self.tested_pairs.add((s1.hash, s2.hash))
-                self.tested_pairs.add((s2.hash, s1.hash))
                 return s1, s2
         raise IndexError("No segment pairs yet untested")
 
