@@ -1,3 +1,4 @@
+import multiprocessing as mp
 from gym import Wrapper
 import numpy as np
 import sys
@@ -5,7 +6,6 @@ import os
 import time
 import os.path as osp
 import queue
-from multiprocessing import Process, Queue
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
@@ -19,9 +19,9 @@ class HumanPreferencesEnvWrapper(Wrapper):
                  just_pretrain=False, just_collect_prefs=False,
                  nstack=4, segment_length=40, n_initial_epochs=0, n_initial_prefs=40):
         super(HumanPreferencesEnvWrapper, self).__init__(env)
-        self.seg_pipe = Queue(maxsize=1)
-        self.pref_pipe = Queue(maxsize=1)
-        self.start_policy_training_flag = Queue(maxsize=1)
+        self.seg_pipe = mp.Queue(maxsize=1)
+        self.pref_pipe = mp.Queue(maxsize=1)
+        self.start_policy_training_flag = mp.Queue(maxsize=1)
         self.recent_obs_stack = [] # rolling list of last 4 observations
         self.train_reward = True # A boolean for whether reward predictor is frozen or actively being trained
         self.obs_shape = env.observation_space.shape
@@ -84,7 +84,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
             sys.stdin = os.fdopen(0)
             self.preference_interface.run(seg_pipe=self.seg_pipe,
                                           pref_pipe=self.pref_pipe)
-        self.pref_interface_proc = Process(target=f, daemon=True)
+        self.pref_interface_proc = mp.Process(target=f, daemon=True)
         self.pref_interface_proc.start()
 
 
