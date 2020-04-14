@@ -5,6 +5,7 @@ import pickle
 import queue
 import time
 import zlib
+import logging
 from threading import Lock, Thread
 
 import easy_tf_log
@@ -148,7 +149,9 @@ class PrefBuffer:
         while not self.stop_recv:
             try:
                 s1, s2, pref = pref_pipe.get(block=True, timeout=1)
+                logging.debug("Pref DB got segment pair plus preferences from pref pipe")
             except queue.Empty:
+                logging.debug("Pref DB got no segments")
                 continue
             n_recvd += 1
 
@@ -163,7 +166,6 @@ class PrefBuffer:
                 self.train_db.append(s1, s2, pref)
                 easy_tf_log.tflog('train_db_len', len(self.train_db))
 
-            #print(f"Preference received! Len train: {len(self.train_db)} Len val: {len(self.val_db)}")
             self.lock.release()
 
             easy_tf_log.tflog('n_prefs_recvd', n_recvd)
