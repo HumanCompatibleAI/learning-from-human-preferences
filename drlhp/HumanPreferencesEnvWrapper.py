@@ -9,9 +9,13 @@ import queue
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
+from functools import partial
 from drlhp.utils import ForkedPdb
 
-
+def run_pref_interface(pref_interface, seg_pipe, pref_pipe, stdin_no):
+    sys.stdin = os.fdopen(0)
+    pref_interface.run(seg_pipe=seg_pipe,
+                       pref_pipe=pref_pipe)
 
 
 class HumanPreferencesEnvWrapper(Wrapper):
@@ -19,8 +23,8 @@ class HumanPreferencesEnvWrapper(Wrapper):
                  just_pretrain=False, just_collect_prefs=False,
                  nstack=4, segment_length=40, n_initial_epochs=0, n_initial_prefs=40):
         super(HumanPreferencesEnvWrapper, self).__init__(env)
-        self.seg_pipe = mp.Queue(maxsize=1)
-        self.pref_pipe = mp.Queue(maxsize=1)
+        self.seg_pipe = mp.get_context('spawn').Queue(maxsize=1)
+        self.pref_pipe = mp.get_context('spawn').Queue(maxsize=1)
         self.start_policy_training_flag = mp.Queue(maxsize=1)
         self.recent_obs_stack = [] # rolling list of last 4 observations
         self.train_reward = True # A boolean for whether reward predictor is frozen or actively being trained
@@ -84,7 +88,12 @@ class HumanPreferencesEnvWrapper(Wrapper):
             sys.stdin = os.fdopen(0)
             self.preference_interface.run(seg_pipe=self.seg_pipe,
                                           pref_pipe=self.pref_pipe)
-        self.pref_interface_proc = mp.Process(target=f, daemon=True)
+        # pref_interface_function = partial(run_pref_interface(self.preference_interface, self.seg_pipe,
+        #                                                      self.pref_pipe))
+        stdin_num = sys.stdin.fileno()
+        self.pref_interface_proc = mp.get_context('spawn').Process(target=run_pref_interface, daemon=True,
+                                              args=(self.preference_interface,
+                                                    self.seg_pipe, self.pref_pipe, stdin_num))
         self.pref_interface_proc.start()
 
 

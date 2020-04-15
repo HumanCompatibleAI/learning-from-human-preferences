@@ -7,25 +7,29 @@ A simple CLI-based interface for querying the user about segment preferences.
 import logging
 import queue
 import time
+import signal
 from copy import deepcopy
 from itertools import combinations
-from multiprocessing import Queue
+import multiprocessing as mp
 from random import shuffle
-
+import sys
 import easy_tf_log
 import numpy as np
 import cv2
 from drlhp.utils import VideoRenderer
 from drlhp.utils import ForkedPdb
 
+def handler(signum, frame):
+    print("Got no response, replaying segment video")
+    raise IOError("No response!")
 
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels):
-        self.vid_q = Queue()
+        self.vid_q = mp.get_context('spawn').Queue()
         if not synthetic_prefs:
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
-                                          mode=VideoRenderer.restart_on_get_mode,
+                                          mode=VideoRenderer.play_through_mode,
                                           zoom=zoom,
                                           channels=channels)
         else:
@@ -52,6 +56,7 @@ class PrefInterface:
 
         print("Preference interface has more than two segments, starting to test")
         while True:
+            print("Restarting preference loop")
             seg_pair = None
             while seg_pair is None:
                 try:
@@ -81,8 +86,9 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
-
+                print("Adding preference to DB")
                 pref_pipe.put((s1.frames, s2.frames, pref))
+                print("Preference added to DB")
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
 
@@ -98,9 +104,9 @@ class PrefInterface:
         while time.time() - start_time < max_wait_seconds:
             try:
                 segment = seg_pipe.get(block=True, timeout=max_wait_seconds)
-                logging.debug("Got segment")
+                logging.info("Pref interface got segment")
             except queue.Empty:
-                logging.debug("Segment queue empty")
+                logging.info("Pref interface segment queue empty")
                 return
 
             if len(self.segments) < self.max_segs:
@@ -120,9 +126,9 @@ class PrefInterface:
         segment_idxs = list(range(len(self.segments)))
         shuffle(segment_idxs)
         possible_pairs = combinations(segment_idxs, 2)
-        logging.debug(f"Num segments: {len(self.segments)}")
-        logging.debug(f"Possible pairs: {len(list(deepcopy(possible_pairs)))}")
-        logging.debug(f"Tested pairs: {len(self.tested_pairs)}")
+        logging.info(f"Num segments: {len(self.segments)}")
+        logging.info(f"Possible pairs: {len(list(deepcopy(possible_pairs)))}")
+        logging.info(f"Tested pairs: {len(self.tested_pairs)}")
         for i1, i2 in possible_pairs:
             i1, i2 = min(i1, i2), max(i1, i2)
             # these should now always be in a canonical order
@@ -151,9 +157,12 @@ class PrefInterface:
         self.vid_q.put(vid)
 
         while True:
+            #signal.signal(signal.SIGALRM, handler)
             print("Choose between segments {} and {}: ".format(s1.hash, s2.hash))
             self.renderer.render()
+            #signal.alarm(5)
             choice = input()
+            #signal.alarm(0)
             # L = "I prefer the left segment"
             # R = "I prefer the right segment"
             # E = "I don't have a clear preference between the two segments"
@@ -162,7 +171,9 @@ class PrefInterface:
                 break
             else:
                 print("Invalid choice '{}'".format(choice))
+                continue
 
+        print("Got preference!")
         if choice == "L":
             pref = (1.0, 0.0)
         elif choice == "R":

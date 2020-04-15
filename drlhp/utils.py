@@ -2,7 +2,7 @@ import queue
 import random
 import socket
 import time
-from multiprocessing import Process
+import multiprocessing as mp
 
 import gym
 import numpy as np
@@ -111,15 +111,22 @@ class VideoRenderer:
         else:
             self.zoom_factor = [zoom]*(self.channels-1) + [1]
         self.playback_speed = playback_speed
-        # self.proc = Process(target=self.render, daemon=True)
+        self.stop_render = False
+        self.current_frames = None
+        # self.proc = mp.get_context('spawn').Process(target=self.render, daemon=True)
         # self.proc.start()
 
     def stop(self):
-        self.proc.terminate()
+        self.stop_render = True
 
     def render(self):
         v = Im()
-        frames = self.vid_queue.get(block=True)
+        self.stop_render = False
+        try:
+            frames = self.vid_queue.get(block=True)
+            self.current_frames = frames
+        except queue.Empty:
+            frames = self.current_frames
         t = 0
         while True:
             # Add a grey dot on the last line showing position
@@ -139,8 +146,6 @@ class VideoRenderer:
                 t += self.playback_speed
                 if t >= len(frames):
                     return
-                    # frames = self.get_queue_most_recent()
-                    # t = 0
                 else:
                     time.sleep(1/60)
             # elif self.mode == VideoRenderer.restart_on_get_mode:
