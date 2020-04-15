@@ -13,6 +13,7 @@ from itertools import combinations
 import multiprocessing as mp
 from random import shuffle
 import sys
+from select import select
 import easy_tf_log
 import numpy as np
 import cv2
@@ -142,6 +143,7 @@ class PrefInterface:
         vid = []
         seg_len = len(s1)
         frame_shape = s1.frames[0][:, :, -1].shape
+        print(f"Creating user-facing video of length {seg_len}")
         for t in range(seg_len):
             border = np.zeros((frame_shape[0], 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
@@ -151,17 +153,24 @@ class PrefInterface:
                                s2.frames[t][:, :, -3:]))
             vid.append(frame)
         #TODO make this a parameter
-        n_pause_frames = 12
+        n_pause_frames = 4
         for _ in range(n_pause_frames):
             vid.append(np.copy(vid[-1]))
-        self.vid_q.put(vid)
-
+        #self.vid_q.put(vid)
+        print(f"Choose between segments {s1.hash} and {s2.hash}. Video length: {len(vid)}: ")
+        # TODO make this a parametr
+        timeout = 3
         while True:
             #signal.signal(signal.SIGALRM, handler)
-            print("Choose between segments {} and {}: ".format(s1.hash, s2.hash))
-            self.renderer.render()
+
+            self.renderer.render(vid)
             #signal.alarm(5)
-            choice = input()
+            user_input, _, _ = select([sys.stdin], [], [], timeout)
+            if user_input:
+                choice = sys.stdin.readline().lstrip().rstrip()
+            else:
+                continue
+            #choice = input()
             #signal.alarm(0)
             # L = "I prefer the left segment"
             # R = "I prefer the right segment"
@@ -170,7 +179,7 @@ class PrefInterface:
             if choice == "L" or choice == "R" or choice == "E" or choice == "":
                 break
             else:
-                print("Invalid choice '{}'".format(choice))
+                print("Invalid choice {}".format(choice))
                 continue
 
         print("Got preference!")
