@@ -101,7 +101,7 @@ class VideoRenderer:
     play_through_mode = 0
     restart_on_get_mode = 1
 
-    def __init__(self, vid_queue, mode, zoom=1, playback_speed=1, channels=3):
+    def __init__(self, vid_queue, mode, fps=12, zoom=1, playback_speed=1, channels=3):
         assert mode == VideoRenderer.restart_on_get_mode or mode == VideoRenderer.play_through_mode
         self.mode = mode
         self.vid_queue = vid_queue
@@ -113,20 +113,24 @@ class VideoRenderer:
         self.playback_speed = playback_speed
         self.stop_render = False
         self.current_frames = None
+        self.v = None
+        self.fps = fps
+        self.sleep_time = 1/self.fps
         # self.proc = mp.get_context('spawn').Process(target=self.render, daemon=True)
         # self.proc.start()
 
     def stop(self):
         self.stop_render = True
 
-    def render(self):
+    def render(self, frames):
         v = Im()
-        self.stop_render = False
-        try:
-            frames = self.vid_queue.get(block=True)
-            self.current_frames = frames
-        except queue.Empty:
-            frames = self.current_frames
+        # try:
+        #     frames = self.vid_queue.get(block=True)
+        #     print(f"Read frames of length {len(frames)} from vid queue")
+        #     self.current_frames = frames
+        # except queue.Empty:
+        #     print(f"Nothing in queue, reusing old frames of length {len(self.current_frames)}")
+        #     frames = self.current_frames
         t = 0
         while True:
             # Add a grey dot on the last line showing position
@@ -136,18 +140,23 @@ class VideoRenderer:
             # x = int(fraction_played * width)
             # frames[t][-1][x] = 128
 
-            zoomed_frame = zoom(frames[t], self.zoom_factor)
+            start = time.time()
+            zoomed_frame = zoom(frames[t], self.zoom_factor, order=1)
             v.imshow(zoomed_frame)
-
+            end = time.time()
+            render_time = end - start
             if self.mode == VideoRenderer.play_through_mode:
                 # Wait until having finished playing the current
                 # set of frames. Then, stop, and get the most
                 # recent set of frames.
                 t += self.playback_speed
                 if t >= len(frames):
+                    v.close()
                     return
                 else:
-                    time.sleep(1/60)
+                    sleep_time = max(0, self.sleep_time-render_time)
+                    time.sleep(sleep_time)
+                    continue
             # elif self.mode == VideoRenderer.restart_on_get_mode:
             #     # Always try and get a new set of frames to show.
             #     # If there is a new set of frames on the queue,
