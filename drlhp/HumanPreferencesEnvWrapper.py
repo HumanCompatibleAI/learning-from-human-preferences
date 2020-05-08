@@ -12,19 +12,27 @@ from drlhp.reward_predictor import RewardPredictorEnsemble
 from functools import partial
 from drlhp.utils import ForkedPdb
 
-def run_pref_interface(pref_interface, seg_pipe, pref_pipe, stdin_no):
+def run_pref_interface(pref_interface, seg_pipe, pref_pipe, remaining_pairs, kill_processes, stdin_no):
     sys.stdin = os.fdopen(0)
     pref_interface.run(seg_pipe=seg_pipe,
-                       pref_pipe=pref_pipe)
+                       pref_pipe=pref_pipe,
+                       remaining_pairs=remaining_pairs,
+                       kill_processes=kill_processes)
 
 
 class HumanPreferencesEnvWrapper(Wrapper):
     def __init__(self, env, reward_predictor_network, preference_interface,
                  just_pretrain=False, just_collect_prefs=False,
-                 nstack=4, segment_length=40, n_initial_epochs=0, n_initial_prefs=40):
+                 nstack=4, segment_length=40, n_initial_epochs=0, n_initial_prefs=40,
+                 mp_context='spawn'):
+
+        # Recommend using 'spawn' for non synthetic preferences and 'fork' for synthetic
         super(HumanPreferencesEnvWrapper, self).__init__(env)
-        self.seg_pipe = mp.get_context('spawn').Queue(maxsize=1)
-        self.pref_pipe = mp.get_context('spawn').Queue(maxsize=1)
+        self.mp_context = mp_context
+        self.seg_pipe = mp.get_context(self.mp_context ).Queue(maxsize=1)
+        self.pref_pipe = mp.get_context(self.mp_context ).Queue(maxsize=1)
+        self.remaining_pairs = mp.get_context(self.mp_context).Value('i', 0)
+        self.kill_processes = mp.get_context(self.mp_context).Value('i', 0)
         self.start_policy_training_flag = mp.Queue(maxsize=1)
         self.recent_obs_stack = [] # rolling list of last 4 observations
         self.train_reward = True # A boolean for whether reward predictor is frozen or actively being trained
@@ -36,6 +44,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.obs_stack = np.zeros((self.obs_shape[0], self.obs_shape[1], self.obs_shape[2] * nstack), dtype=np.uint8)
 
         self.pref_interface_proc = None
+        # TODO Maybe eventually delete this or actually use it to make training faster
         self.reward_training_proc = None
         self.prefs_dir = None
 
@@ -46,7 +55,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.reward_predictor_sleep_interval = 10
         self.pref_buffer = None
         self.max_prefs = 200
-        self.log_dir = "drlhp_logs/"
+        self.log_dir = "drlhp_logs/" # TODO make this a passed in parameter
         self.val_interval = 10
         self.ckpt_interval = 10
         self.just_pretrain = just_pretrain
@@ -74,26 +83,21 @@ class HumanPreferencesEnvWrapper(Wrapper):
         if n_initial_prefs > 0:
             self._train_reward_predictor()
 
-    def _save_prefs(self):
+    def save_prefs(self):
         pref_db_train, pref_db_val = self.pref_buffer.get_dbs()
         train_path = osp.join(self.log_dir, 'train.pkl.gz')
         pref_db_train.save(train_path)
-        print("Saved training preferences to '{}'".format(train_path))
+        print(f"Saved {len(pref_db_train)} training preferences to '{train_path}'")
         val_path = osp.join(self.log_dir, 'val.pkl.gz')
         pref_db_val.save(val_path)
-        print("Saved validation preferences to '{}'".format(val_path))
+        print(f"Saved {len(pref_db_val)} validation preferences to '{val_path}'")
 
     def _start_pref_interface(self):
-        def f():
-            sys.stdin = os.fdopen(0)
-            self.preference_interface.run(seg_pipe=self.seg_pipe,
-                                          pref_pipe=self.pref_pipe)
-        # pref_interface_function = partial(run_pref_interface(self.preference_interface, self.seg_pipe,
-        #                                                      self.pref_pipe))
         stdin_num = sys.stdin.fileno()
-        self.pref_interface_proc = mp.get_context('spawn').Process(target=run_pref_interface, daemon=True,
+        self.pref_interface_proc = mp.get_context(self.mp_context).Process(target=run_pref_interface, daemon=True,
                                               args=(self.preference_interface,
-                                                    self.seg_pipe, self.pref_pipe, stdin_num))
+                                                    self.seg_pipe, self.pref_pipe, self.remaining_pairs,
+                                                    self.kill_processes, stdin_num))
         self.pref_interface_proc.start()
 
 
@@ -137,7 +141,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         cur_train_size = len(pref_db_train)
         if cur_train_size - self.last_reward_training_size >= self.reward_training_pref_diff:
             print(f"Training reward predictor on {cur_train_size} preferences")
-            self._save_prefs()
+            self.save_prefs()
             self.reward_predictor.train(pref_db_train, pref_db_val, self.val_interval)
             if self.reward_training_iters and self.reward_training_iters % self.ckpt_interval == 0:
                 self.reward_predictor.save()
@@ -162,11 +166,24 @@ class HumanPreferencesEnvWrapper(Wrapper):
                 pass
             self.episode_segment = Segment()
 
-
-
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
         self._update_episode_segment(obs, reward, done)
-        predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
-        self._train_reward_predictor()
-        return obs, predicted_reward, done, info
+        if self.reward_predictor is not None:
+            predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
+            self._train_reward_predictor()
+            return obs, predicted_reward, done, info
+        else:
+            return obs, reward, done, info
+
+    def cleanup_processes(self):
+        self.pref_buffer.stop_recv_thread()
+        if self.reward_training_proc is not None:
+            self.reward_training_proc.join()
+        if self.pref_interface_proc is not None:
+            self.pref_interface_proc.join()
+        self.seg_pipe.close()
+        self.seg_pipe.join_thread()
+        self.pref_pipe.close()
+        self.pref_pipe.join_thread()
+
