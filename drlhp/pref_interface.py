@@ -27,8 +27,8 @@ def handler(signum, frame):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels):
-        self.vid_q = mp.get_context('spawn').Queue()
         if not synthetic_prefs:
+            self.vid_q = mp.get_context('spawn').Queue()
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
                                           mode=VideoRenderer.play_through_mode,
                                           zoom=zoom,
@@ -40,6 +40,7 @@ class PrefInterface:
         self.seg_idx = 0
         self.segments = []
         self.channels = channels
+        self.remaining_possible_pairs = 0
         self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
         easy_tf_log.set_dir(log_dir)
@@ -48,26 +49,35 @@ class PrefInterface:
         if self.renderer:
             self.renderer.stop()
 
-    def run(self, seg_pipe, pref_pipe):
+    def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes):
         self.recv_segments(seg_pipe)
 
-        while len(self.segments) < 2:
-            time.sleep(5.0)
+        while len(self.segments) < 6:
+            if kill_processes == 1 or kill_processes.value == 1:
+                print("Pref interface got kill signal, exiting")
+                return
+
+            print(f"Pref interface only has {len(self.segments)} segments, sleeping")
+            time.sleep(1.0)
             self.recv_segments(seg_pipe)
 
         print("Preference interface has more than two segments, starting to test")
-        while True:
-            print("Restarting preference loop")
+        while True and kill_processes.value == 0:
+            #print("Restarting preference loop")
             seg_pair = None
             while seg_pair is None:
+                if kill_processes.value == 1:
+                    print("Pref interface got kill signal, exiting")
+                    return
                 try:
                     seg_pair = self.sample_seg_pair()
+                    remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
                     print("Preference interface ran out of untested segments;"
                           "waiting...")
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
-                    time.sleep(5.0)
+                    time.sleep(1.0)
                     self.recv_segments(seg_pipe)
             s1, s2 = seg_pair
 
@@ -84,12 +94,15 @@ class PrefInterface:
                 else:
                     pref = (0.5, 0.5)
 
+                # TODO remove this
+                time.sleep(0.25)
+
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
-                print("Adding preference to DB")
+                #print("Adding preference to DB")
                 pref_pipe.put((s1.frames, s2.frames, pref))
-                print("Preference added to DB")
+                #print("Preference added to DB")
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
 
@@ -105,9 +118,9 @@ class PrefInterface:
         while time.time() - start_time < max_wait_seconds:
             try:
                 segment = seg_pipe.get(block=True, timeout=max_wait_seconds)
-                logging.info("Pref interface got segment")
+                print("Pref interface got segment")
             except queue.Empty:
-                logging.info("Pref interface segment queue empty")
+                #print("Pref interface segment queue empty")
                 return
 
             if len(self.segments) < self.max_segs:
@@ -127,9 +140,10 @@ class PrefInterface:
         segment_idxs = list(range(len(self.segments)))
         shuffle(segment_idxs)
         possible_pairs = combinations(segment_idxs, 2)
-        logging.info(f"Num segments: {len(self.segments)}")
-        logging.info(f"Possible pairs: {len(list(deepcopy(possible_pairs)))}")
-        logging.info(f"Tested pairs: {len(self.tested_pairs)}")
+        self.remaining_possible_pairs = len(list(deepcopy(possible_pairs))) - len(self.tested_pairs)
+        # print(f"Num segments: {len(self.segments)}")
+        # print(f"Remaining pairs: {self.remaining_possible_pairs}")
+        # print(f"Tested pairs: {len(self.tested_pairs)}")
         for i1, i2 in possible_pairs:
             i1, i2 = min(i1, i2), max(i1, i2)
             # these should now always be in a canonical order
