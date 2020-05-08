@@ -51,6 +51,7 @@ class PrefInterface:
 
     def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes):
         self.recv_segments(seg_pipe)
+        idle_cycles = 0
 
         while len(self.segments) < 6:
             if kill_processes == 1 or kill_processes.value == 1:
@@ -73,10 +74,14 @@ class PrefInterface:
                     seg_pair = self.sample_seg_pair()
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
+                    if idle_cycles > 20:
+                        print("Preference interface has gone idle, exiting")
+                        return
                     print("Preference interface ran out of untested segments;"
                           "waiting...")
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
+                    idle_cycles += 1
                     time.sleep(1.0)
                     self.recv_segments(seg_pipe)
             s1, s2 = seg_pair
@@ -118,7 +123,7 @@ class PrefInterface:
         while time.time() - start_time < max_wait_seconds:
             try:
                 segment = seg_pipe.get(block=True, timeout=max_wait_seconds)
-                print("Pref interface got segment")
+                #print("Pref interface got segment")
             except queue.Empty:
                 #print("Pref interface segment queue empty")
                 return

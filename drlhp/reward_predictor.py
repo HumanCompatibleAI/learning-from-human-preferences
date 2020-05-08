@@ -70,9 +70,9 @@ class RewardPredictorEnsemble:
         # Try to fix bug, based on here https://stackoverflow.com/questions/34001922/failedpreconditionerror-attempting-to-use-uninitialized-in-tensorflow
         init_op = tf.global_variables_initializer()
         self.sess.run(init_op)
-        self.checkpoint_file = osp.join(log_dir,
-                                        'reward_predictor_checkpoints',
-                                        'reward_predictor.ckpt')
+        self.checkpoint_dir = osp.join(log_dir,
+                                        'reward_predictor_checkpoints')
+        self.checkpoint_file = osp.join(self.checkpoint_dir, 'reward_predictor.ckpt')
         self.train_writer = tf.summary.FileWriter(
             osp.join(log_dir, 'reward_predictor', 'train'), flush_secs=5)
         self.test_writer = tf.summary.FileWriter(
@@ -235,7 +235,7 @@ class RewardPredictorEnsemble:
         start_steps = self.n_steps
         start_time = time.time()
 
-        for _, batch in enumerate(batch_iter(prefs_train.prefs,
+        for ind, batch in enumerate(batch_iter(prefs_train.prefs,
                                              batch_size=32,
                                              shuffle=True)):
             self.train_step(batch, prefs_train)
@@ -243,7 +243,6 @@ class RewardPredictorEnsemble:
 
             if self.n_steps and self.n_steps % val_interval == 0:
                 self.val_step(prefs_val)
-
         end_time = time.time()
         end_steps = self.n_steps
         rate = (end_steps - start_steps) / (end_time - start_time)
