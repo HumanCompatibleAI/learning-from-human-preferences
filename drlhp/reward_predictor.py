@@ -1,7 +1,6 @@
 import tensorflow.compat.v1 as tf
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-import logging
 import os.path as osp
 import time
 
@@ -31,22 +30,6 @@ class RewardPredictorEnsemble:
         self.sess = tf.Session()
         self.logger = logger
         graph = tf.get_default_graph()
-        #graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
-        # Why not just use soft device placement? With soft placement,
-        # if we have a bug which prevents an operation being placed on the GPU
-        # (e.g. we're using uint8s for operations that the GPU can't do),
-        # then TensorFlow will be silent and just place the operation on a CPU.
-        # Instead, we want to say: if there's a GPU present, definitely try and
-        # put things on the GPU. If it fails, tell us!
-
-        # if tf.test.gpu_device_name():
-        #     worker_device = "/job:{}/task:0/gpu:0".format(cluster_job_name)
-        # else:
-        #     worker_device = "/job:{}/task:0".format(cluster_job_name)
-        # device_setter = tf.train.replica_device_setter(
-        #     cluster=cluster_dict,
-        #     ps_device="/job:ps/task:0",
-        #     worker_device=worker_device)
         self.rps = []
         with graph.as_default():
             for pred_n in range(n_preds):
@@ -134,7 +117,7 @@ class RewardPredictorEnsemble:
         ckpt_name = self.saver.save(self.sess,
                                     self.checkpoint_file,
                                     self.n_steps)
-        self.logger("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
+        self.logger.info("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
 
     def raw_rewards(self, obs):
         """
@@ -203,8 +186,8 @@ class RewardPredictorEnsemble:
         ensemble_rs = ensemble_rs.transpose()
         assert_equal(ensemble_rs.shape, (self.n_preds, n_steps))
         self.logger.debug("Reward mean/stddev:\n%s %s",
-                      self.r_norm.mean,
-                      self.r_norm.std)
+                          self.r_norm.mean,
+                          self.r_norm.std)
         self.logger.debug("Normalized rewards:\n%s", ensemble_rs)
 
         # "...and then averaging the results."
@@ -238,8 +221,8 @@ class RewardPredictorEnsemble:
         start_time = time.time()
 
         for ind, batch in enumerate(batch_iter(prefs_train.prefs,
-                                             batch_size=32,
-                                             shuffle=True)):
+                                               batch_size=32,
+                                               shuffle=True)):
             self.train_step(batch, prefs_train)
             self.n_steps += 1
 
@@ -261,12 +244,11 @@ class RewardPredictorEnsemble:
             feed_dict[rp.s2] = s2s
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = True
-        # TODO add self.summaries back in
-        ops = [[rp.train for rp in self.rps]] #self.summaries,
-        # TODO  also add summaries back into return val
-        _ = self.sess.run(ops, feed_dict)
+        ops = [self.summaries, [rp.train for rp in self.rps]]
+        ops = [self.summaries, [rp.train for rp in self.rps]]
+        summaries, _ = self.sess.run(ops, feed_dict)
+        self.train_writer.add_summary(summaries, self.n_steps)
 
-        #self.train_writer.add_summary(summaries, self.n_steps)
 
     def val_step(self, prefs_val):
         val_batch_size = 32
@@ -310,7 +292,6 @@ class RewardPredictorNetwork:
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
         h, w, c = obs_shape
-        # TODO explicitly pass nstack in here, rather than it just using 4 by default
         # NOTE FOR FUTURE used to be c*4
         s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
         s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))

@@ -9,9 +9,9 @@ from multiprocessing import Process, Queue
 
 import cloudpickle
 import easy_tf_log
-from drlhp.a2c import logger, learn
-from drlhp.a2c.policies import CnnPolicy, MlpPolicy
-from drlhp.params import parse_args, PREFS_VAL_FRACTION
+from drlhp.deprecated.a2c import logger, learn
+from drlhp.deprecated.a2c import CnnPolicy, MlpPolicy
+from drlhp.deprecated.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.pref_db import PrefDB, PrefBuffer
 from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor import RewardPredictorEnsemble

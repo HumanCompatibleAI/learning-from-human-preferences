@@ -6,14 +6,10 @@ import os
 import time
 import os.path as osp
 import queue
-import tensorflow.compat.v1 as tf
 import logging
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
-from drlhp.params import parse_args, PREFS_VAL_FRACTION
+from drlhp.deprecated.params import PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
-from functools import partial
-from drlhp.utils import ForkedPdb
-
 
 
 def _save_prefs(pref_buffer, log_dir, logger):
@@ -105,7 +101,6 @@ def _train_reward_predictor(reward_predictor_network, obs_shape, pref_pipe, rewa
             save_model_flag.value = 0
 
 
-
 class HumanPreferencesEnvWrapper(Wrapper):
     def __init__(self, env, reward_predictor_network, preference_interface,
                  train_reward=True, collect_prefs=True, nstack=4, segment_length=40,
@@ -142,8 +137,8 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.reward_predictor_refresh_interval = 20
 
         # Create Queues and Values to handle multiprocessing communication
-        self.seg_pipe = mp.get_context(self.mp_context ).Queue(maxsize=1)
-        self.pref_pipe = mp.get_context(self.mp_context ).Queue(maxsize=1)
+        self.seg_pipe = mp.get_context(self.mp_context).Queue(maxsize=1)
+        self.pref_pipe = mp.get_context(self.mp_context).Queue(maxsize=1)
         self.remaining_pairs = mp.get_context(self.mp_context).Value('i', 0)
         self.kill_pref_interface_flag = mp.get_context(self.mp_context).Value('i', 0)
         self.kill_reward_training_flag = mp.get_context(self.mp_context).Value('i', 0)
