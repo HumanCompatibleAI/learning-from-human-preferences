@@ -7,6 +7,7 @@ import time
 import os.path as osp
 import queue
 import tensorflow.compat.v1 as tf
+import logging
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.params import parse_args, PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
@@ -14,28 +15,29 @@ from functools import partial
 from drlhp.utils import ForkedPdb
 
 
-def _save_prefs(pref_buffer, log_dir):
+
+def _save_prefs(pref_buffer, log_dir, logger):
     pref_db_train, pref_db_val = pref_buffer.get_dbs()
     train_path = osp.join(log_dir, 'train.pkl.gz')
     pref_db_train.save(train_path)
-    print(f"Saved {len(pref_db_train)} training preferences to '{train_path}'")
+    logger.info(f"Saved {len(pref_db_train)} training preferences to '{train_path}'")
     val_path = osp.join(log_dir, 'val.pkl.gz')
     pref_db_val.save(val_path)
-    print(f"Saved {len(pref_db_val)} validation preferences to '{val_path}'")
+    logger.info(f"Saved {len(pref_db_val)} validation preferences to '{val_path}'")
 
-def _load_or_create_pref_db(prefs_dir, max_prefs):
+def _load_or_create_pref_db(prefs_dir, max_prefs, logger):
     if prefs_dir is not None:
         train_path = osp.join(prefs_dir, 'train.pkl.gz')
         pref_db_train = PrefDB.load(train_path)
-        print("Loaded training preferences from '{}'".format(train_path))
+        logger.info("Loaded training preferences from '{}'".format(train_path))
         n_prefs, n_segs = len(pref_db_train), len(pref_db_train.segments)
-        print("({} preferences, {} segments)".format(n_prefs, n_segs))
+        logger.info("({} preferences, {} segments)".format(n_prefs, n_segs))
 
         val_path = osp.join(prefs_dir, 'val.pkl.gz')
         pref_db_val = PrefDB.load(val_path)
-        print("Loaded validation preferences from '{}'".format(val_path))
+        logger.info("Loaded validation preferences from '{}'".format(val_path))
         n_prefs, n_segs = len(pref_db_val), len(pref_db_val.segments)
-        print("({} preferences, {} segments)".format(n_prefs, n_segs))
+        logger.info("({} preferences, {} segments)".format(n_prefs, n_segs))
     else:
         n_train = max_prefs * (1 - PREFS_VAL_FRACTION)
         n_val = max_prefs * PREFS_VAL_FRACTION
@@ -52,31 +54,34 @@ def run_pref_interface(pref_interface, seg_pipe, pref_pipe, remaining_pairs, kil
                        remaining_pairs=remaining_pairs,
                        kill_processes=kill_processes)
 
-def make_reward_predictor(reward_predictor_network, log_dir, obs_shape, checkpoint_dir=None):
+def make_reward_predictor(reward_predictor_network, log_dir, obs_shape, logger, checkpoint_dir=None):
     reward_predictor = RewardPredictorEnsemble(
         core_network=reward_predictor_network,
         log_dir=log_dir,
         batchnorm=False,
         dropout=0.0,
         lr=7e-4,
-        obs_shape=obs_shape)
+        obs_shape=obs_shape,
+        logger=logger)
     reward_predictor.init_network(load_ckpt_dir=checkpoint_dir)
     return reward_predictor
 
 def _train_reward_predictor(reward_predictor_network, obs_shape, pref_pipe, reward_training_steps, prefs_dir, max_prefs,
                             ckpt_interval, kill_processes_flag, database_refresh_interval,
                             validation_interval, num_initial_prefs, save_prefs_flag, save_model_flag,
-                            pretrained_reward_predictor_dir, log_dir):
-    reward_predictor = make_reward_predictor(reward_predictor_network, log_dir, obs_shape,
+                            pretrained_reward_predictor_dir, log_dir, log_level):
+    reward_predictor_logger = logging.getLogger("_train_reward_predictor")
+    reward_predictor_logger.setLevel(log_level)
+    reward_predictor = make_reward_predictor(reward_predictor_network, log_dir, obs_shape, reward_predictor_logger,
                                              checkpoint_dir=pretrained_reward_predictor_dir)
 
-    pref_buffer = _load_or_create_pref_db(prefs_dir, max_prefs)
+    pref_buffer = _load_or_create_pref_db(prefs_dir, max_prefs, reward_predictor_logger)
     pref_buffer.start_recv_thread(pref_pipe)
     pref_db_train, pref_db_val = pref_buffer.get_dbs()
     minimum_prefs_met = False
     while True:
         if save_prefs_flag.value == 1:
-            _save_prefs(pref_buffer, log_dir)
+            _save_prefs(pref_buffer, log_dir, reward_predictor_logger)
             save_prefs_flag.value = 0
         if kill_processes_flag.value == 1:
             pref_buffer.stop_recv_thread()
@@ -84,7 +89,7 @@ def _train_reward_predictor(reward_predictor_network, obs_shape, pref_pipe, rewa
         if not minimum_prefs_met:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
             if len(pref_db_train) < num_initial_prefs:
-                print(f"REWARD: Reward db of length {len(pref_db_train)}, waiting for length {num_initial_prefs}")
+                reward_predictor_logger.info(f"Reward db of length {len(pref_db_train)}, waiting for length {num_initial_prefs} to start training")
                 time.sleep(5)
                 continue
             else:
@@ -92,7 +97,7 @@ def _train_reward_predictor(reward_predictor_network, obs_shape, pref_pipe, rewa
         if reward_training_steps.value % database_refresh_interval == 0:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
         cur_train_size = len(pref_db_train)
-        print(f"Training reward predictor on {cur_train_size} preferences, iteration {reward_training_steps.value }")
+        reward_predictor_logger.info(f"Training reward predictor on {cur_train_size} preferences, iteration {reward_training_steps.value }")
         reward_predictor.train(pref_db_train, pref_db_val, validation_interval)
         reward_training_steps.value += 1
         if (save_model_flag.value == 1) or (reward_training_steps.value % ckpt_interval == 0):
@@ -106,10 +111,14 @@ class HumanPreferencesEnvWrapper(Wrapper):
                  train_reward=True, collect_prefs=True, nstack=4, segment_length=40,
                  n_initial_training_steps=50, n_initial_prefs=40, prefs_dir=None,
                  mp_context='spawn', pretrained_reward_predictor_dir=None, log_dir="drlhp_logs/",
-                 max_prefs_in_db=10000, obs_transform_func=None, reward_predictor_ckpt_interval=10):
+                 max_prefs_in_db=10000, obs_transform_func=None, reward_predictor_ckpt_interval=10,
+                 env_wrapper_log_level=logging.INFO, reward_predictor_log_level=logging.INFO):
 
         # Recommend using 'spawn' for non synthetic preferences and 'fork' for synthetic
         super(HumanPreferencesEnvWrapper, self).__init__(env)
+        self.logger = logging.getLogger("HumanPreferencesEnvWrapper")
+        self.logger.setLevel(env_wrapper_log_level)
+        self.reward_predictor_log_level = reward_predictor_log_level
 
         # Save a bunch of init parameters as wrapper properties
         self.mp_context = mp_context
@@ -128,7 +137,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.log_dir = log_dir
         self.val_interval = 10
         self.ckpt_interval = reward_predictor_ckpt_interval
-        self.reward_database_refresh_interval = 2
+        self.reward_database_refresh_interval = 1
         self.reward_predictor_n_train = 0
         self.reward_predictor_refresh_interval = 20
 
@@ -151,7 +160,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.reward_training_proc = None
         self.pref_buffer = None
         self.reward_predictor = None
-
 
         if self.collect_prefs:
             self._start_pref_interface()
@@ -182,7 +190,8 @@ class HumanPreferencesEnvWrapper(Wrapper):
                                                                          self.save_prefs_flag,
                                                                          self.save_model_flag,
                                                                          self.pretrained_reward_predictor_dir,
-                                                                         self.log_dir))
+                                                                         self.log_dir,
+                                                                         self.reward_predictor_log_level))
         self.reward_training_proc.start()
 
     def _update_episode_segment(self, obs, reward, done):
@@ -219,14 +228,15 @@ class HumanPreferencesEnvWrapper(Wrapper):
 
     def load_reward_predictor(self):
         if self.reward_predictor is None:
-            print("Loading reward predictor; will use model reward now")
+            self.logger.info("Loading reward predictor; will use model reward now")
             self.reward_predictor = RewardPredictorEnsemble(
                 core_network=self.reward_predictor_network,
                 log_dir=self.log_dir,
                 batchnorm=False,
                 dropout=0.0,
                 lr=7e-4,
-                obs_shape=self.obs_shape)
+                obs_shape=self.obs_shape,
+                logger=self.logger)
         self.reward_predictor_n_train = self.reward_training_steps.value
         self.reward_predictor.init_network(self.pretrained_reward_predictor_dir)#.init_network(self.reward_predictor.checkpoint_dir)
 
@@ -235,7 +245,10 @@ class HumanPreferencesEnvWrapper(Wrapper):
         pretrained_model = self.reward_predictor is None and self.pretrained_reward_predictor_dir is not None
         should_update_model = self.reward_training_steps.value - self.reward_predictor_n_train > self.reward_predictor_refresh_interval
         if sufficiently_trained or pretrained_model or should_update_model:
-            print("Loading reward predictor")
+            if sufficiently_trained:
+                self.logger.info("Model is sufficiently trained, switching to it for reward")
+            if should_update_model:
+                self.logger.info("Updating model used for env reward")
             self.load_reward_predictor()
         obs, reward, done, info = self.env.step(action)
         if self.collecting_segments:
@@ -247,20 +260,20 @@ class HumanPreferencesEnvWrapper(Wrapper):
             return obs, reward, done, info
 
     def cleanup_processes(self):
-        print("Sending kill flags")
+        self.logger.debug("Sending kill flags to processes")
         self.kill_reward_training_flag.value = 1
         self.kill_pref_interface_flag.value = 1
 
-        print("Joining processes")
+        self.logger.debug("Joining processes that are running")
         if self.reward_training_proc is not None:
             self.reward_training_proc.join()
         if self.pref_interface_proc is not None:
             self.pref_interface_proc.join()
 
-        print("Closing seg pipe")
+        self.logger.debug("Closing seg pipe")
         self.seg_pipe.close()
         self.seg_pipe.join_thread()
-        print("Closing pref pipe")
+        self.logger.debug("Closing pref pipe")
         self.pref_pipe.close()
         self.pref_pipe.join_thread()
 

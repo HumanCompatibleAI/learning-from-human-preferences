@@ -26,7 +26,8 @@ def handler(signum, frame):
 
 class PrefInterface:
 
-    def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels):
+    def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels,
+                 log_level=logging.INFO):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
@@ -35,6 +36,8 @@ class PrefInterface:
                                           channels=channels)
         else:
             self.renderer = None
+        self.logger = logging.getLogger("PrefInterface")
+        self.logger.setLevel(log_level)
         self.synthetic_prefs = synthetic_prefs
         self.zoom = zoom
         self.seg_idx = 0
@@ -55,29 +58,28 @@ class PrefInterface:
 
         while len(self.segments) < 6:
             if kill_processes == 1 or kill_processes.value == 1:
-                print("Pref interface got kill signal, exiting")
+                self.logger.info("Pref interface got kill signal, exiting")
                 return
 
-            print(f"Pref interface only has {len(self.segments)} segments, sleeping")
+            self.logger.debug(f"Pref interface only has {len(self.segments)} segments, sleeping")
             time.sleep(1.0)
             self.recv_segments(seg_pipe)
 
-        print("Preference interface has more than two segments, starting to test")
+        self.logger.debug("Preference interface has more than two segments, starting to test")
         while True and kill_processes.value == 0:
-            #print("Restarting preference loop")
             seg_pair = None
             while seg_pair is None:
                 if kill_processes.value == 1:
-                    print("Pref interface got kill signal, exiting")
+                    self.logger.info("Pref interface got kill signal, exiting")
                     return
                 try:
                     seg_pair = self.sample_seg_pair()
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
                     if idle_cycles > 20:
-                        print("Preference interface has gone idle, exiting")
+                        self.logger.info("Preference interface has gone idle, exiting")
                         return
-                    print("Preference interface ran out of untested segments;"
+                    self.logger.debug("Preference interface ran out of untested segments;"
                           "waiting...")
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
@@ -86,7 +88,7 @@ class PrefInterface:
                     self.recv_segments(seg_pipe)
             s1, s2 = seg_pair
 
-            logging.info("Querying preference for segments %s and %s",
+            self.logger.debug("Querying preference for segments %s and %s",
                           s1.hash, s2.hash)
 
             if not self.synthetic_prefs:
@@ -105,9 +107,7 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
-                #print("Adding preference to DB")
                 pref_pipe.put((s1.frames, s2.frames, pref))
-                #print("Preference added to DB")
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.
 
@@ -123,9 +123,7 @@ class PrefInterface:
         while time.time() - start_time < max_wait_seconds:
             try:
                 segment = seg_pipe.get(block=True, timeout=max_wait_seconds)
-                #print("Pref interface got segment")
             except queue.Empty:
-                #print("Pref interface segment queue empty")
                 return
 
             if len(self.segments) < self.max_segs:
@@ -162,7 +160,7 @@ class PrefInterface:
         vid = []
         seg_len = len(s1)
         frame_shape = s1.frames[0][:, :, -1].shape
-        print(f"Creating user-facing video of length {seg_len}")
+        self.logger.debug(f"Creating user-facing video of length {seg_len}")
         for t in range(seg_len):
             border = np.zeros((frame_shape[0], 10, 3), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
@@ -198,7 +196,7 @@ class PrefInterface:
             if choice == "L" or choice == "R" or choice == "E" or choice == "":
                 break
             else:
-                print("Invalid choice {}".format(choice))
+                self.logger.warning("Invalid choice {}".format(choice))
                 continue
 
         print("Got preference!")

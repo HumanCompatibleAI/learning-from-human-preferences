@@ -20,6 +20,7 @@ class RewardPredictorEnsemble:
     def __init__(self,
                  core_network,
                  obs_shape,
+                 logger,
                  lr=1e-4,
                  batchnorm=False,
                  dropout=0.0,
@@ -28,6 +29,7 @@ class RewardPredictorEnsemble:
         self.n_preds = n_preds
         self.obs_shape = obs_shape
         self.sess = tf.Session()
+        self.logger = logger
         graph = tf.get_default_graph()
         #graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
         # Why not just use soft device placement? With soft placement,
@@ -124,7 +126,7 @@ class RewardPredictorEnsemble:
                     load_ckpt_dir)
                 raise FileNotFoundError(msg)
             self.saver.restore(self.sess, ckpt_file)
-            print("Loaded reward predictor checkpoint from '{}'".format(ckpt_file))
+            self.logger.info("Loaded reward predictor checkpoint from '{}'".format(ckpt_file))
         else:
             self.sess.run(self.init_op)
 
@@ -132,7 +134,7 @@ class RewardPredictorEnsemble:
         ckpt_name = self.saver.save(self.sess,
                                     self.checkpoint_file,
                                     self.n_steps)
-        print("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
+        self.logger("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
 
     def raw_rewards(self, obs):
         """
@@ -166,7 +168,7 @@ class RewardPredictorEnsemble:
         # Get unnormalized rewards
 
         ensemble_rs = self.raw_rewards(obs)
-        logging.debug("Unnormalized rewards:\n%s", ensemble_rs)
+        self.logger.debug("Unnormalized rewards:\n%s", ensemble_rs)
 
         # Normalize rewards
 
@@ -200,15 +202,15 @@ class RewardPredictorEnsemble:
         ensemble_rs *= 0.05
         ensemble_rs = ensemble_rs.transpose()
         assert_equal(ensemble_rs.shape, (self.n_preds, n_steps))
-        logging.debug("Reward mean/stddev:\n%s %s",
+        self.logger.debug("Reward mean/stddev:\n%s %s",
                       self.r_norm.mean,
                       self.r_norm.std)
-        logging.debug("Normalized rewards:\n%s", ensemble_rs)
+        self.logger.debug("Normalized rewards:\n%s", ensemble_rs)
 
         # "...and then averaging the results."
         rs = np.mean(ensemble_rs, axis=0)
         assert_equal(rs.shape, (n_steps, ))
-        logging.debug("After ensemble averaging:\n%s", rs)
+        self.logger.debug("After ensemble averaging:\n%s", rs)
 
         return rs
 
@@ -229,7 +231,7 @@ class RewardPredictorEnsemble:
         """
         Train all ensemble members for one epoch.
         """
-        print("Training/testing with %d/%d preferences" % (len(prefs_train),
+        self.logger.info("Training/testing with %d/%d preferences" % (len(prefs_train),
                                                            len(prefs_val)))
 
         start_steps = self.n_steps
