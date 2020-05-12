@@ -9,13 +9,12 @@ import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
-import readline
 import cv2
 
-from drlhp.a2c import logger
-from drlhp.a2c.utils import (cat_entropy, discount_with_dones,
-                             find_trainable_variables, mse)
-from drlhp.a2c.common import explained_variance, set_global_seeds
+from drlhp.deprecated.a2c import logger
+from drlhp.deprecated.a2c import (discount_with_dones,
+                                  find_trainable_variables, mse)
+from drlhp.deprecated.a2c import explained_variance, set_global_seeds
 from drlhp.pref_db import Segment
 
 

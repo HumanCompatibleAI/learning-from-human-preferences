@@ -1,6 +1,6 @@
 import numpy as np
 from multiprocessing import Process, Pipe
-from drlhp.a2c.common.vec_env import VecEnv
+from drlhp.deprecated.a2c import VecEnv
 
 def worker(remote, env_fn_wrapper):
     env = env_fn_wrapper.x()

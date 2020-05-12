@@ -16,9 +16,7 @@ import sys
 from select import select
 import easy_tf_log
 import numpy as np
-import cv2
 from drlhp.utils import VideoRenderer
-from drlhp.utils import ForkedPdb
 
 def handler(signum, frame):
     print("Got no response, replaying segment video")
@@ -27,7 +25,8 @@ def handler(signum, frame):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels,
-                 log_level=logging.INFO):
+                 log_level=logging.INFO, min_segments_to_test=6, max_idle_cycles=15, n_pause_frames=4,
+                 user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
             self.renderer = VideoRenderer(vid_queue=self.vid_q,
@@ -38,6 +37,7 @@ class PrefInterface:
             self.renderer = None
         self.logger = logging.getLogger("PrefInterface")
         self.logger.setLevel(log_level)
+        self.min_segments_to_test = min_segments_to_test
         self.synthetic_prefs = synthetic_prefs
         self.zoom = zoom
         self.seg_idx = 0
@@ -46,6 +46,9 @@ class PrefInterface:
         self.remaining_possible_pairs = 0
         self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
+        self.max_idle_cycles = max_idle_cycles
+        self.n_pause_frames = n_pause_frames
+        self.user_response_timeout = user_response_timeout
         easy_tf_log.set_dir(log_dir)
 
     def stop_renderer(self):
@@ -56,13 +59,13 @@ class PrefInterface:
         self.recv_segments(seg_pipe)
         idle_cycles = 0
 
-        while len(self.segments) < 6:
-            if kill_processes == 1 or kill_processes.value == 1:
+        while len(self.segments) < self.min_segments_to_test:
+            if kill_processes.value == 1:
                 self.logger.info("Pref interface got kill signal, exiting")
                 return
 
-            self.logger.debug(f"Pref interface only has {len(self.segments)} segments, sleeping")
-            time.sleep(1.0)
+            self.logger.debug(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
+            time.sleep(5.0)
             self.recv_segments(seg_pipe)
 
         self.logger.debug("Preference interface has more than two segments, starting to test")
@@ -76,7 +79,7 @@ class PrefInterface:
                     seg_pair = self.sample_seg_pair()
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
-                    if idle_cycles > 20:
+                    if idle_cycles > self.max_idle_cycles:
                         self.logger.info("Preference interface has gone idle, exiting")
                         return
                     self.logger.debug("Preference interface ran out of untested segments;"
@@ -101,7 +104,6 @@ class PrefInterface:
                 else:
                     pref = (0.5, 0.5)
 
-                # TODO remove this
                 time.sleep(0.25)
 
             if pref is not None:
@@ -162,33 +164,22 @@ class PrefInterface:
         frame_shape = s1.frames[0][:, :, -1].shape
         self.logger.debug(f"Creating user-facing video of length {seg_len}")
         for t in range(seg_len):
-            border = np.zeros((frame_shape[0], 10, 3), dtype=np.uint8)
+            border = np.zeros((frame_shape[0], 10, self.channels), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
-            # TODO make this general across channels
-            frame = np.hstack((s1.frames[t][:, :, -3:],
+            frame = np.hstack((s1.frames[t][:, :, -self.channels:],
                                border,
-                               s2.frames[t][:, :, -3:]))
+                               s2.frames[t][:, :, -self.channels:]))
             vid.append(frame)
-        #TODO make this a parameter
-        n_pause_frames = 4
-        for _ in range(n_pause_frames):
+        for _ in range(self.n_pause_frames):
             vid.append(np.copy(vid[-1]))
-        #self.vid_q.put(vid)
-        print(f"Choose between segments {s1.hash} and {s2.hash}. Video length: {len(vid)}: ")
-        # TODO make this a parametr
-        timeout = 3
+        print(f"Choose between segments {s1.hash} (L) and {s2.hash} (R). (E) for equal. Video length: {len(vid)}: ")
         while True:
-            #signal.signal(signal.SIGALRM, handler)
-
             self.renderer.render(vid)
-            #signal.alarm(5)
-            user_input, _, _ = select([sys.stdin], [], [], timeout)
+            user_input, _, _ = select([sys.stdin], [], [], self.user_response_timeout)
             if user_input:
                 choice = sys.stdin.readline().lstrip().rstrip()
             else:
                 continue
-            #choice = input()
-            #signal.alarm(0)
             # L = "I prefer the left segment"
             # R = "I prefer the right segment"
             # E = "I don't have a clear preference between the two segments"

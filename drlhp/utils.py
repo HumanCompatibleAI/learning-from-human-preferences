@@ -2,18 +2,16 @@ import queue
 import random
 import socket
 import time
-import multiprocessing as mp
 
 import gym
 import numpy as np
 import pyglet
 import pdb
 import sys
-import cv2
 
-from drlhp.a2c.common import wrap_deepmind
-from drlhp.a2c.common import set_global_seeds
-from drlhp.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
+from drlhp.deprecated.a2c import wrap_deepmind
+from drlhp.deprecated.a2c import set_global_seeds
+from drlhp.deprecated.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from scipy.ndimage import zoom
 
 
@@ -258,7 +256,7 @@ def make_env(env, env_id, seed=0):
         env = gym.make(env_id)
         env.seed(seed)
         if env_id == 'EnduroNoFrameskip-v4':
-            from drlhp.enduro_wrapper import EnduroWrapper
+            from drlhp.deprecated.enduro_wrapper import EnduroWrapper
             env = EnduroWrapper(env)
         return wrap_deepmind(env)
     return env
