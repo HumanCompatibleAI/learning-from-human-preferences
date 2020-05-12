@@ -144,12 +144,14 @@ class HumanPreferencesEnvWrapper(Wrapper):
 
         self.recent_obs_stack = []  # rolling list of last 4 observations
         self.episode_segment = Segment()
+        self.collecting_segments = True
         self.obs_shape = env.observation_space.shape
         self.obs_stack = np.zeros((self.obs_shape[0], self.obs_shape[1], self.obs_shape[2] * nstack), dtype=np.uint8)
         self.pref_interface_proc = None
         self.reward_training_proc = None
         self.pref_buffer = None
         self.reward_predictor = None
+
 
         if self.collect_prefs:
             self._start_pref_interface()
@@ -208,6 +210,13 @@ class HumanPreferencesEnvWrapper(Wrapper):
     def save_reward_predictor(self):
         self.save_model_flag.value = 1
 
+    def stop_segment_collection(self):
+        self.collecting_segments = False
+
+    def start_segment_collection(self):
+        self.collecting_segments = True
+        self.episode_segment = Segment()
+
     def load_reward_predictor(self):
         if self.reward_predictor is None:
             print("Loading reward predictor; will use model reward now")
@@ -229,7 +238,8 @@ class HumanPreferencesEnvWrapper(Wrapper):
             print("Loading reward predictor")
             self.load_reward_predictor()
         obs, reward, done, info = self.env.step(action)
-        self._update_episode_segment(obs, reward, done)
+        if self.collecting_segments:
+            self._update_episode_segment(obs, reward, done)
         if self.reward_predictor is not None:
             predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
             return obs, predicted_reward, done, info

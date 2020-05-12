@@ -263,6 +263,7 @@ class RewardPredictorEnsemble:
         ops = [[rp.train for rp in self.rps]] #self.summaries,
         # TODO  also add summaries back into return val
         _ = self.sess.run(ops, feed_dict)
+
         #self.train_writer.add_summary(summaries, self.n_steps)
 
     def val_step(self, prefs_val):
