@@ -245,7 +245,6 @@ class RewardPredictorEnsemble:
             feed_dict[rp.pref] = prefs
             feed_dict[rp.training] = True
         ops = [self.summaries, [rp.train for rp in self.rps]]
-        ops = [self.summaries, [rp.train for rp in self.rps]]
         summaries, _ = self.sess.run(ops, feed_dict)
         self.train_writer.add_summary(summaries, self.n_steps)
 
