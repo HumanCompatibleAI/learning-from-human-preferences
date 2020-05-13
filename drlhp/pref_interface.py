@@ -7,7 +7,6 @@ A simple CLI-based interface for querying the user about segment preferences.
 import logging
 import queue
 import time
-import signal
 from copy import deepcopy
 from itertools import combinations
 import multiprocessing as mp
@@ -58,14 +57,17 @@ class PrefInterface:
     def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes):
         self.recv_segments(seg_pipe)
         idle_cycles = 0
-
+        print("PrefInterface starting to run")
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
+                print("Pref interface got kill signal, exiting")
                 self.logger.info("Pref interface got kill signal, exiting")
                 return
-
+            print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
             self.logger.debug(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
-            time.sleep(5.0)
+            # This sleep time is load bearing, because if you sleep for too long you'll drop more segments on the ground due to
+            # not re-querying the segment pipe
+            time.sleep(0.5)
             self.recv_segments(seg_pipe)
 
         self.logger.debug("Preference interface has more than two segments, starting to test")

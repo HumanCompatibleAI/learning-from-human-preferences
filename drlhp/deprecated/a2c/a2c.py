@@ -12,9 +12,10 @@ import tensorflow as tf
 import cv2
 
 from drlhp.deprecated.a2c import logger
-from drlhp.deprecated.a2c import (discount_with_dones,
+from drlhp.deprecated.a2c.utils import (discount_with_dones,
                                   find_trainable_variables, mse)
-from drlhp.deprecated.a2c import explained_variance, set_global_seeds
+from drlhp.deprecated.a2c.common.math_util import explained_variance
+from drlhp.deprecated.a2c.common.misc_util import set_global_seeds
 from drlhp.pref_db import Segment
 
 

@@ -9,8 +9,8 @@ import pyglet
 import pdb
 import sys
 
-from drlhp.deprecated.a2c import wrap_deepmind
-from drlhp.deprecated.a2c import set_global_seeds
+from drlhp.deprecated.a2c.common.atari_wrappers import wrap_deepmind
+from drlhp.deprecated.a2c.common.misc_util import set_global_seeds
 from drlhp.deprecated.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from scipy.ndimage import zoom
 

@@ -8,8 +8,9 @@ import os.path as osp
 import queue
 import logging
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
-from drlhp.deprecated.params import PREFS_VAL_FRACTION
 from drlhp.reward_predictor import RewardPredictorEnsemble
+
+PREFS_VAL_FRACTION = 0.2
 
 
 def _save_prefs(pref_buffer, log_dir, logger):
