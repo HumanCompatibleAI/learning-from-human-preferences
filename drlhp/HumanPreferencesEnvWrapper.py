@@ -12,7 +12,6 @@ from drlhp.reward_predictor import RewardPredictorEnsemble
 
 PREFS_VAL_FRACTION = 0.2
 
-
 def _save_prefs(pref_buffer, log_dir, logger):
     pref_db_train, pref_db_val = pref_buffer.get_dbs()
     train_path = osp.join(log_dir, 'train.pkl.gz')

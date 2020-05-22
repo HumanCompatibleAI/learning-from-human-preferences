@@ -23,7 +23,7 @@ def handler(signum, frame):
 
 class PrefInterface:
 
-    def __init__(self, synthetic_prefs, max_segs, log_dir, zoom, channels,
+    def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
                  log_level=logging.INFO, min_segments_to_test=6, max_idle_cycles=15, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
