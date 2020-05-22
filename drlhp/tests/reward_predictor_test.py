@@ -23,7 +23,8 @@ class TestRewardPredictor(unittest.TestCase):
         self.sess = tf.Session()
         self.rpn = RewardPredictorNetwork(batchnorm=batchnorm, dropout=dropout,
                                           lr=1e-3,
-                                          core_network=net_cnn)
+                                          core_network=net_cnn,
+                                          obs_shape=(84, 84, 4))
         self.sess.run(tf.global_variables_initializer())
 
     def test_weight_sharing(self):
