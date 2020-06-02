@@ -24,7 +24,7 @@ def handler(signum, frame):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
-                 log_level=logging.INFO, min_segments_to_test=6, max_idle_cycles=15, n_pause_frames=4,
+                 log_level=logging.INFO, min_segments_to_test=2, max_idle_cycles=15, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
@@ -57,17 +57,16 @@ class PrefInterface:
     def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes):
         self.recv_segments(seg_pipe)
         idle_cycles = 0
-        print("PrefInterface starting to run")
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
-                print("Pref interface got kill signal, exiting")
+                #print("Pref interface got kill signal, exiting")
                 self.logger.info("Pref interface got kill signal, exiting")
                 return
             print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
             self.logger.debug(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
             # This sleep time is load bearing, because if you sleep for too long you'll drop more segments on the ground due to
             # not re-querying the segment pipe
-            time.sleep(0.5)
+            time.sleep(0.05)
             self.recv_segments(seg_pipe)
 
         self.logger.debug("Preference interface has more than two segments, starting to test")
@@ -111,6 +110,7 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
+                #print("PrefInterface sending preference to pref pipe!")
                 pref_pipe.put((s1.frames, s2.frames, pref))
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.

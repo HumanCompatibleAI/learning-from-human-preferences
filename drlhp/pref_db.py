@@ -149,6 +149,7 @@ class PrefBuffer:
         while not self.stop_recv:
             try:
                 s1, s2, pref = pref_pipe.get(block=True, timeout=1)
+                #print("Pref DB got segment pair!")
                 logging.debug("Pref DB got segment pair plus preferences from pref pipe")
             except queue.Empty:
                 logging.debug("Pref DB got no segments")
