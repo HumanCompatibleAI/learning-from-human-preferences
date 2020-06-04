@@ -130,23 +130,24 @@ def _make_reward_predictor(reward_predictor_network: Callable,
 
 
 def _train_reward_predictor(reward_predictor_network: Callable,
+                            train_reward: bool,
+                            pretrained_reward_predictor_dir: str,
                             obs_shape: tuple,
                             pref_pipe: mp.Queue,
-                            reward_training_steps: mp.Value,
+                            pref_db_size: int,
                             prefs_dir: str,
                             max_prefs: int,
                             ckpt_interval: int,
-                            kill_processes_flag: mp.Value,
+                            num_initial_prefs: int,
+                            reward_training_steps: mp.Value,
                             database_refresh_interval: int,
                             validation_interval: int,
-                            num_initial_prefs: int,
+                            kill_processes_flag: mp.Value,
                             save_prefs_flag: mp.Value,
                             save_model_flag: mp.Value,
-                            pretrained_reward_predictor_dir: str,
                             log_dir: str,
-                            log_level: int, # logging levels are technically ints
-                            train_reward: bool,
-                            pref_db_size: int):
+                            log_level: int # logging levels are technically ints
+                            ):
     """
     A function, meant to be run inside a multiprocessing process, to create training and validation PrefDBs, and
     train a reward predictor using the preferences stored in those DBs.
@@ -240,29 +241,29 @@ class HumanPreferencesEnvWrapper(Wrapper):
     def __init__(self,
                  env: Env,
                  reward_predictor_network: Callable,
-
                  train_reward: bool = True,
                  collect_prefs: bool = True,
                  segment_length: int = 40,
-                 n_initial_training_steps: int = 50,
-                 n_initial_prefs: int = 40,
-                 prefs_dir: str = None,
                  mp_context: str = 'spawn',
-                 pretrained_reward_predictor_dir: str = None,
+                 prefs_dir: str = None,
                  log_dir: str = "drlhp_logs/",
                  max_prefs_in_db: int = 10000,
                  obs_transform_func: Callable = None,
+                 n_initial_training_steps: int = 50,
+                 n_initial_prefs: int = 40,
+                 pretrained_reward_predictor_dir: str = None,
                  reward_predictor_ckpt_interval: int = 10,
-                 env_wrapper_log_level: int = logging.INFO,
-                 reward_predictor_log_level: int = logging.INFO,
-                 pref_interface_log_level: int = logging.INFO,
                  reward_predictor_refresh_interval: int = 20,
                  validation_interval: int = 10,
                  reward_database_refresh_interval: int = 1,
                  synthetic_prefs: bool = True,
                  max_pref_interface_segs: int = 50,
                  zoom_ratio: int = 4,
-                 channels: int = 3):
+                 channels: int = 3,
+                 env_wrapper_log_level: int = logging.INFO,
+                 reward_predictor_log_level: int = logging.INFO,
+                 pref_interface_log_level: int = logging.INFO
+                 ):
         """
         A Wrapper that collects segments from the observations returned through its internal env's .step() function,
         and sends them to a PrefInterface that queries either humans or a synthetic reward oracle for preferences.
@@ -276,31 +277,35 @@ class HumanPreferencesEnvWrapper(Wrapper):
         :param train_reward: A boolean specifying whether or not the env should train a reward predictor
         :param collect_prefs: A boolean specifying whether or not the env should collect preferences in a PrefDB
         :param segment_length: How many observations long a segment should be before it's sent to the PrefInterface
-        :param n_initial_training_steps: How many training steps should be performed before we switch to using a
-                                        trained reward model as our returned environment reward
-        :param n_initial_prefs: How many preferences to collect before starting to train our reward predictor
-        :param prefs_dir: An string path specifying where an existing set of PrefDBs are stored, if any exist
         :param mp_context: A string specifying the multiprocessing context we want to use for this env's processes
-        :param pretrained_reward_predictor_dir: An string path specifying where a pretrained reward predictor
-                                                is saved, if one exists
+        :param prefs_dir: An string path specifying where an existing set of PrefDBs are stored, if any exist
         :param log_dir: An string path specifying where logs and artifacts from this run should be saved
         :param max_prefs_in_db: The maximum number of preferences to store across both train and validation PrefDBs
         :param obs_transform_func: An optional transformation function to transform the observation returned by our
                                     internal environment into the observation that should be concatenated to form our
                                     segments (for example, if the underlying environment is a Dict space, your transform
                                     func could be obs['pov'])
-        :param reward_predictor_ckpt_interval: The interval of reward training steps on which we should automatically
-                                               checkpoint the reward prediction model
-        :param env_wrapper_log_level: The log level of the logger corresponding to the wrapper as a whole
-        :param reward_predictor_log_level: The log level of the logger corresponding to the reward predictor training function
-        :param pref_interface_log_level: The log level of the logger used by the preference interface
+        :param n_initial_training_steps: How many training steps should be performed before we switch to using a
+                                        trained reward model as our returned environment reward
+        :param n_initial_prefs: How many preferences to collect before starting to train our reward predictor
+
+
+        :param pretrained_reward_predictor_dir: An string path specifying where a pretrained reward predictor
+                                                is saved, if one exists
+
         :param reward_predictor_refresh_interval: Interval of reward predictor training steps on which to update the
                                                   reward predictor used by the env to calculate reward
         :param validation_interval: Interval of reward predictor training steps on which to perform validation
         :param reward_database_refresh_interval: Interval of reward predictor training steps on which to refresh the
                                                  PrefDBs used for training/validation
+
+        :param reward_predictor_ckpt_interval: The interval of reward training steps on which we should automatically
+                                               checkpoint the reward prediction model
+
         :param synthetic_prefs: If True, we use the reward function of the environment to calculate prefs; if False,
                                 we query for human preferences using a GUI interface
+
+
         :param max_pref_interface_segs: The maximum number of segments that will be stored and paired with one another by
                                         the preference interface
         :param zoom_ratio: How much images should be zoomed when they're displayed to humans in the GUI (ignored if using
@@ -308,6 +313,9 @@ class HumanPreferencesEnvWrapper(Wrapper):
         :param channels: The number of channels the images you'll show to humans will have. (Can't be inferred from
                          observation space shape because common usage involves a FrameStack wrapper, which will stack
                          frames along the channel dimension)
+        :param env_wrapper_log_level: The log level of the logger corresponding to the wrapper as a whole
+        :param reward_predictor_log_level: The log level of the logger corresponding to the reward predictor training function
+        :param pref_interface_log_level: The log level of the logger used by the preference interface
         """
 
         # TODO maybe move creation of the Pref Interface inside rather than have it created externally?
@@ -399,23 +407,23 @@ class HumanPreferencesEnvWrapper(Wrapper):
     def _start_reward_predictor_training(self):
         self.reward_training_proc = mp.get_context('fork').Process(target=_train_reward_predictor, daemon=True,
                                                                    args=(self.reward_predictor_network,
+                                                                         self.train_reward,
+                                                                         self.pretrained_reward_predictor_dir,
                                                                          self.obs_shape,
                                                                          self.pref_pipe,
-                                                                         self.reward_training_steps,
+                                                                         self.pref_db_size,
                                                                          self.prefs_dir,
                                                                          self.max_prefs,
                                                                          self.ckpt_interval,
-                                                                         self.kill_reward_training_flag,
+                                                                         self.n_initial_prefs,
+                                                                         self.reward_training_steps,
                                                                          self.reward_database_refresh_interval,
                                                                          self.val_interval,
-                                                                         self.n_initial_prefs,
+                                                                         self.kill_reward_training_flag,
                                                                          self.save_prefs_flag,
                                                                          self.save_model_flag,
-                                                                         self.pretrained_reward_predictor_dir,
                                                                          self.log_dir,
-                                                                         self.reward_predictor_log_level,
-                                                                         self.train_reward,
-                                                                         self.pref_db_size))
+                                                                         self.reward_predictor_log_level))
         self.reward_training_proc.start()
 
     def _update_episode_segment(self, obs, reward, done):
