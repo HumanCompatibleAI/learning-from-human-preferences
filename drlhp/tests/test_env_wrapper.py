@@ -64,12 +64,11 @@ def test_segment_creation(dummy_pixel_env):
     drlhp_env.close()
 
 
-def test_automatic_preference_collection(dummy_pixel_env, pref_interface):
+def test_automatic_preference_collection(dummy_pixel_env):
     # Test that we can collect preference and that they're successfully added to the PrefDB
 
     drlhp_env = HumanPreferencesEnvWrapper(dummy_pixel_env,
                                            reward_predictor_network=net_cnn,
-                                           preference_interface=pref_interface,
                                            segment_length=10,
                                            mp_context='spawn',
                                            train_reward=False,
@@ -86,13 +85,13 @@ def test_automatic_preference_collection(dummy_pixel_env, pref_interface):
     print(f"Size of pref DB: {drlhp_env.pref_db_size.value}")
     drlhp_env.close()
 
-def test_reward_training(dummy_pixel_env, pref_interface):
+
+def test_reward_training(dummy_pixel_env):
     # Test that we can take at least 5 training steps of the reward predictor, and successfully switch to
     # using that for our reward once that many steps are taken
 
     drlhp_env = HumanPreferencesEnvWrapper(dummy_pixel_env,
                                            reward_predictor_network=net_cnn,
-                                           preference_interface=pref_interface,
                                            segment_length=5,
                                            mp_context='spawn',
                                            n_initial_training_steps=5,
