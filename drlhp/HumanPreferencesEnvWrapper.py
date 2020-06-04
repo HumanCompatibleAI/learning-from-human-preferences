@@ -170,7 +170,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
                               the reward model
     :param save_prefs_flag: A multiprocessing Value that will be set to 1 when we want to save preferences
     :param save_model_flag: A multiprocessing Value that will be set to 1 when we want to trigger a model save
-    :param pretrained_reward_predictor_dir: A string path specifying where a pretrained reward model is saved;
+    :param pretrained_reward_predictor_dir: A string path specifying where a pre-trained reward model is saved;
                                             if None, assumes none exist, and initializes reward model from random
     :param log_dir: A strong path specifying a directory where logs and artifacts will be saved
     :param log_level: The log level you want for the logger within this function
@@ -178,7 +178,6 @@ def _train_reward_predictor(reward_predictor_network: Callable,
                          function to create a set of PrefDBs so they can be filled with preferences.
     :param pref_db_size: A multiprocessing Value used to store the aggregated size of our PrefDBs, so that size can be
                          queried externally
-    :return:
     """
 
     reward_predictor_logger = logging.getLogger("_train_reward_predictor")
