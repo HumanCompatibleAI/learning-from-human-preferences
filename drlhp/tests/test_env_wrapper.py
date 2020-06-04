@@ -41,23 +41,14 @@ def dummy_pixel_env():
     env = ActionMeaningsWrapper(env, env_type="flattened")
     return env
 
-@pytest.fixture
-def pref_interface():
-    pref_int = PrefInterface(synthetic_prefs=True,
-                             max_segs=50,
-                             log_dir="testing_logs",
-                             channels=3,
-                             zoom=4,
-                             log_level=logging.DEBUG)
-    return pref_int
 
 
-def test_segment_creation(dummy_pixel_env, pref_interface):
+
+def test_segment_creation(dummy_pixel_env):
     # Test that we can build up segments from environment steps
 
     drlhp_env = HumanPreferencesEnvWrapper(dummy_pixel_env,
                                            reward_predictor_network=net_cnn,
-                                           preference_interface=pref_interface,
                                            segment_length=10,
                                            mp_context='spawn',
                                            train_reward=False, #Just collect segments for this test
@@ -123,25 +114,3 @@ def test_reward_training(dummy_pixel_env, pref_interface):
     assert drlhp_env.using_reward_from_predictor
     drlhp_env.close()
 
-
-    # HumanPreferencesEnvWrapper(env,
-    #                            reward_predictor_network=net_cnn,
-    #                            preference_interface=pref_int,
-    #                            segment_length=segment_length,
-    #                            mp_context=mp_context,
-    #                            train_reward=train_reward,
-    #                            prefs_dir=prefs_dir,
-    #                            collect_prefs=collect_prefs,
-    #                            log_dir=log_dir,
-    #                            pretrained_reward_predictor_dir=pretrained_reward_predictor_dir,
-    #                            n_initial_training_steps=n_initial_training_steps,
-    #                            max_prefs_in_db=max_prefs_in_db,
-    #                            reward_predictor_ckpt_interval=reward_predictor_ckpt_interval)
-
-
-
-
-# Test whether you can create a pref interface and pass it into a env_wrapper
-# Test whether you can take steps and build up segments
-# Test if, after you've trained the reward predictor enough steps, it gets loaded onto the env
-# Test loading in saved preferences
