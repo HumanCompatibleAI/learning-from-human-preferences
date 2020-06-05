@@ -359,7 +359,9 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.segments_collected = 0
         self.reward_predictor_n_train = 0
         self.using_reward_from_predictor = False
+        self.force_return_true_reward = False
         self.collecting_segments = True
+        self.last_true_reward = None
 
         # Create empty observation stack and new segment
         self.recent_obs_stack = []
@@ -513,11 +515,25 @@ class HumanPreferencesEnvWrapper(Wrapper):
         if self.collecting_segments:
             self._update_episode_segment(obs, reward, done)
 
-        if self.reward_predictor is not None:
+        if self.reward_predictor is not None and not self.force_return_true_reward:
+            # If we have self.force_return_true_reward set, the environment will return the true
+            # underlying reward (meant for evaluation purposes)
             predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
+            self.last_true_reward = reward
             return obs, predicted_reward, done, info
         else:
             return obs, reward, done, info
+
+    def switch_to_true_reward(self):
+        if self.force_return_true_reward:
+            raise Warning("Environment already returning true reward, no change")
+        self.force_return_true_reward = True
+
+    def switch_to_predicted_reward(self):
+        if not self.force_return_true_reward:
+            raise Warning("Environment already returning predicted reward, no change")
+        self.force_return_true_reward = False
+
 
     def _cleanup_processes(self):
         self.logger.debug("Sending kill flags to processes")
