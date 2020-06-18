@@ -387,7 +387,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.pref_buffer = None
         self.reward_predictor = None
 
-    def reset(self):
         # If we want to collect preferences, we need to start a PrefInterface-running process
         if self.collect_prefs:
             self._start_pref_interface()
@@ -395,7 +394,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         # process (which also handles creating a PrefDB in which preferences are stored/saved)
         if self.train_reward or self.collect_prefs:
             self._start_reward_predictor_training()
-        return self.env.reset()
 
     def _start_pref_interface(self):
         self.pref_interface_proc = mp.get_context(self.mp_context).Process(target=_run_pref_interface, daemon=True,
