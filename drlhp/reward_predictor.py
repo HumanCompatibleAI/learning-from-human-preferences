@@ -151,7 +151,7 @@ class RewardPredictorEnsemble:
         # Get unnormalized rewards
 
         ensemble_rs = self.raw_rewards(obs)
-        self.logger.debug("Unnormalized rewards:\n%s", ensemble_rs)
+        #self.logger.debug("Unnormalized rewards:\n%s", ensemble_rs)
 
         # Normalize rewards
 
@@ -185,15 +185,15 @@ class RewardPredictorEnsemble:
         ensemble_rs *= 0.05
         ensemble_rs = ensemble_rs.transpose()
         assert_equal(ensemble_rs.shape, (self.n_preds, n_steps))
-        self.logger.debug("Reward mean/stddev:\n%s %s",
-                          self.r_norm.mean,
-                          self.r_norm.std)
-        self.logger.debug("Normalized rewards:\n%s", ensemble_rs)
+        #self.logger.debug("Reward mean/stddev:\n%s %s",
+        #                  self.r_norm.mean,
+        #                  self.r_norm.std)
+        #self.logger.debug("Normalized rewards:\n%s", ensemble_rs)
 
         # "...and then averaging the results."
         rs = np.mean(ensemble_rs, axis=0)
         assert_equal(rs.shape, (n_steps, ))
-        self.logger.debug("After ensemble averaging:\n%s", rs)
+        #self.logger.debug("After ensemble averaging:\n%s", rs)
 
         return rs
 
@@ -214,8 +214,6 @@ class RewardPredictorEnsemble:
         """
         Train all ensemble members for one epoch.
         """
-        self.logger.info("Training/testing with %d/%d preferences" % (len(prefs_train),
-                                                           len(prefs_val)))
 
         start_steps = self.n_steps
         start_time = time.time()
