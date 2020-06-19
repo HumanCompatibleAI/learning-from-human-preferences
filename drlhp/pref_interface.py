@@ -16,15 +16,22 @@ from select import select
 import easy_tf_log
 import numpy as np
 from drlhp.utils import VideoRenderer
+import logging
+from functools import partial
 
 def handler(signum, frame):
     print("Got no response, replaying segment video")
     raise IOError("No response!")
 
+def fake_log(message, message_level, log_level, log_name):
+    if message_level >= log_level:
+        level_name = logging.getLevelName(log_level)
+        print(f"{level_name} - {log_name} - {message}")
+
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
-                 log_level=logging.INFO, min_segments_to_test=2, max_idle_cycles=15, n_pause_frames=4,
+                 min_segments_to_test=2, max_idle_cycles=15, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
@@ -34,8 +41,6 @@ class PrefInterface:
                                           channels=channels)
         else:
             self.renderer = None
-        self.logger = logging.getLogger("PrefInterface")
-        self.logger.setLevel(log_level)
         self.min_segments_to_test = min_segments_to_test
         self.synthetic_prefs = synthetic_prefs
         self.zoom = zoom
@@ -54,37 +59,39 @@ class PrefInterface:
         if self.renderer:
             self.renderer.stop()
 
-    def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes):
+    def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes, log_level):
+        log_name = 'pref_interface.run'
+        pref_interface_fake_log = partial(fake_log, log_name=log_name, log_level=log_level)
         self.recv_segments(seg_pipe)
         idle_cycles = 0
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
-                #print("Pref interface got kill signal, exiting")
-                self.logger.info("Pref interface got kill signal, exiting")
+                pref_interface_fake_log(
+                    "Pref interface got kill signal, exiting",
+                    logging.INFO)
                 return
-            print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
-            self.logger.debug(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
+            #print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
+            pref_interface_fake_log(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping", logging.DEBUG)
             # This sleep time is load bearing, because if you sleep for too long you'll drop more segments on the ground due to
             # not re-querying the segment pipe
             time.sleep(0.05)
             self.recv_segments(seg_pipe)
 
-        self.logger.debug("Preference interface has more than two segments, starting to test")
+        pref_interface_fake_log("Preference interface has more than two segments, starting to test", logging.INFO)
         while True and kill_processes.value == 0:
             seg_pair = None
             while seg_pair is None:
                 if kill_processes.value == 1:
-                    self.logger.info("Pref interface got kill signal, exiting")
+                    pref_interface_fake_log("Pref interface got kill signal, exiting", logging.INFO)
                     return
                 try:
                     seg_pair = self.sample_seg_pair()
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
                     if idle_cycles > self.max_idle_cycles:
-                        self.logger.info("Preference interface has gone idle, exiting")
+                        pref_interface_fake_log("Preference interface has gone idle, exiting", logging.INFO)
                         return
-                    self.logger.debug("Preference interface ran out of untested segments;"
-                          "waiting...")
+                    pref_interface_fake_log("Preference interface ran out of untested segments; waiting", logging.DEBUG)
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
                     idle_cycles += 1
@@ -92,8 +99,7 @@ class PrefInterface:
                     self.recv_segments(seg_pipe)
             s1, s2 = seg_pair
 
-            self.logger.debug("Querying preference for segments %s and %s",
-                          s1.hash, s2.hash)
+            pref_interface_fake_log(f"Querying preference for segments {s1.hash} and {s2.hash}", logging.DEBUG)
 
             if not self.synthetic_prefs:
                 pref = self.ask_user(s1, s2)
@@ -160,11 +166,11 @@ class PrefInterface:
                 return s1, s2
         raise IndexError("No segment pairs yet untested")
 
-    def ask_user(self, s1, s2):
+    def ask_user(self, s1, s2, log_func):
         vid = []
         seg_len = len(s1)
         frame_shape = s1.frames[0][:, :, -1].shape
-        self.logger.debug(f"Creating user-facing video of length {seg_len}")
+        log_func(f"Creating user-facing video of length {seg_len}", logging.DEBUG)
         for t in range(seg_len):
             border = np.zeros((frame_shape[0], 10, self.channels), dtype=np.uint8)
             # -1 => show only the most recent frame of the 4-frame stack
@@ -189,7 +195,7 @@ class PrefInterface:
             if choice == "L" or choice == "R" or choice == "E" or choice == "":
                 break
             else:
-                self.logger.warning("Invalid choice {}".format(choice))
+                log_func(f"Invalid choice {choice}", logging.WARNING)
                 continue
 
         print("Got preference!")

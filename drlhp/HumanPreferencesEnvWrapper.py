@@ -75,7 +75,8 @@ def _run_pref_interface(pref_interface: PrefInterface,
                         seg_pipe: mp.Queue,
                         pref_pipe: mp.Queue,
                         remaining_pairs: mp.Value,
-                        kill_processes: mp.Value):
+                        kill_processes: mp.Value,
+                        log_level: int = logging.INFO):
     """
     Basically a large lambda function for calling pref_interface.run(); meant to be used as the target of a
     multiprocessing Process.
@@ -91,12 +92,14 @@ def _run_pref_interface(pref_interface: PrefInterface,
                            (specifically, it will trigger pref_interface.run() to return so we can easily join
                            the process)
     """
-    sys.stdin = os.fdopen(0)
+    #sys.stdin = os.fdopen(0)
+
     print("Running pref interface func")
     pref_interface.run(seg_pipe=seg_pipe,
                        pref_pipe=pref_pipe,
                        remaining_pairs=remaining_pairs,
-                       kill_processes=kill_processes)
+                       kill_processes=kill_processes,
+                       log_level=log_level)
 
 
 def _make_reward_predictor(reward_predictor_network: Callable,
@@ -183,6 +186,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
 
     reward_predictor_logger = logging.getLogger("_train_reward_predictor")
     reward_predictor_logger.setLevel(log_level)
+    reward_predictor_logger.info("Reward predictor works at all")
 
     # Create a RewardPredictorEnsemble using the specified core network and obs shape
     reward_predictor = _make_reward_predictor(reward_predictor_network,
@@ -221,7 +225,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
         if not minimum_prefs_met:
             # Confirm that we have at least `num_initial_prefs` training examples, and 1 validation example
             if current_train_size < num_initial_prefs or current_val_size < 1:
-                reward_predictor_logger.info(f"Reward dbs of length {len(pref_db_train)}, {len(pref_db_val)}, waiting for length {num_initial_prefs}, 1 to start training")
+                reward_predictor_logger.debug(f"Reward dbs of length {len(pref_db_train)}, {len(pref_db_val)}, waiting for length {num_initial_prefs}, 1 to start training")
                 time.sleep(1)
                 continue
             else:
@@ -233,6 +237,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
         reward_predictor.train(pref_db_train, pref_db_val, validation_interval)
         reward_training_steps.value += 1
         if (save_model_flag.value == 1) or (reward_training_steps.value % ckpt_interval == 0):
+            _save_prefs(pref_buffer, log_dir, reward_predictor_logger)
             reward_predictor.save()
             save_model_flag.value = 0
 
@@ -253,7 +258,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
                  n_initial_prefs: int = 40,
                  pretrained_reward_predictor_dir: str = None,
                  reward_predictor_ckpt_interval: int = 10,
-                 reward_predictor_refresh_interval: int = 20,
+                 reward_predictor_refresh_interval: int = 10,
                  validation_interval: int = 10,
                  reward_database_refresh_interval: int = 1,
                  synthetic_prefs: bool = True,
@@ -325,6 +330,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.logger = logging.getLogger("HumanPreferencesEnvWrapper")
         self.logger.setLevel(env_wrapper_log_level)
         self.reward_predictor_log_level = reward_predictor_log_level
+        self.pref_interface_log_level = pref_interface_log_level
 
         self.obs_shape = env.observation_space.shape
 
@@ -332,8 +338,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
                                                   max_segs=max_pref_interface_segs,
                                                   log_dir=log_dir,
                                                   channels=channels,
-                                                  zoom=zoom_ratio,
-                                                  log_level=pref_interface_log_level)
+                                                  zoom=zoom_ratio)
 
         # Save a bunch of init parameters as wrapper properties
         self.synthetic_prefs = synthetic_prefs
@@ -471,7 +476,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
 
     def _load_reward_predictor(self, model_load_dir):
         if self.reward_predictor is None:
-            self.logger.info(f"Loading reward predictor from {model_load_dir}; will use itsmodel reward now")
+            self.logger.info(f"Loading reward predictor from {model_load_dir}; will use its model reward now")
             self.reward_predictor = RewardPredictorEnsemble(
                 core_network=self.reward_predictor_network,
                 log_dir=self.log_dir,
@@ -486,14 +491,16 @@ class HumanPreferencesEnvWrapper(Wrapper):
 
     def step(self, action):
         # Check whether we have only just hit the point of the model having trained for enough steps
-        sufficiently_trained = self.reward_predictor is None and self.reward_training_steps.value >= self.n_initial_training_steps
+
+        minimum_training_steps_reached = self.reward_training_steps.value >= self.n_initial_training_steps
+        sufficiently_trained = self.reward_predictor is None and minimum_training_steps_reached
 
         # Check whether we have an existing pretrained model we've not yet loaded in
         pretrained_model = self.reward_predictor is None and self.pretrained_reward_predictor_dir is not None
 
         # Check whether we should update our existing reward predictor with a new one because we've done enough
         # training steps since we last updated
-        should_update_model = self.reward_training_steps.value - self.reward_predictor_n_train > self.reward_predictor_refresh_interval
+        should_update_model = minimum_training_steps_reached and (self.reward_training_steps.value - self.reward_predictor_n_train > self.reward_predictor_refresh_interval)
 
         # If any of these things are true, we load a model in
         if sufficiently_trained or pretrained_model or should_update_model:
@@ -516,7 +523,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         if self.reward_predictor is not None and not self.force_return_true_reward:
             # If we have self.force_return_true_reward set, the environment will return the true
             # underlying reward (meant for evaluation purposes)
-            predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))
+            predicted_reward = self.reward_predictor.reward(np.array([np.array(obs)]))[0]
             self.last_true_reward = reward
             return obs, predicted_reward, done, info
         else:
