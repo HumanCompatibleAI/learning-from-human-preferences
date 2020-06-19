@@ -233,7 +233,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
         if reward_training_steps.value % database_refresh_interval == 0:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
 
-        reward_predictor_logger.info(f"Training reward predictor on {current_train_size} preferences, iteration {reward_training_steps.value }")
+        reward_predictor_logger.info(f"Training reward predictor on {current_train_size} preferences, testing on {current_val_size}, iteration {reward_training_steps.value }")
         reward_predictor.train(pref_db_train, pref_db_val, validation_interval)
         reward_training_steps.value += 1
         if (save_model_flag.value == 1) or (reward_training_steps.value % ckpt_interval == 0):
@@ -406,7 +406,8 @@ class HumanPreferencesEnvWrapper(Wrapper):
                                                                                  self.seg_pipe,
                                                                                  self.pref_pipe,
                                                                                  self.remaining_pairs,
-                                                                                 self.kill_pref_interface_flag))
+                                                                                 self.kill_pref_interface_flag,
+                                                                                 self.pref_interface_log_level))
         self.pref_interface_proc.start()
 
     def _start_reward_predictor_training(self):
@@ -559,5 +560,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.pref_pipe.join_thread()
 
     def close(self):
+        self.logger.debug("env.close() was called")
         self._cleanup_processes()
         self.env.close()

@@ -31,7 +31,7 @@ def fake_log(message, message_level, log_level, log_name):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
-                 min_segments_to_test=2, max_idle_cycles=15, n_pause_frames=4,
+                 min_segments_to_test=2, max_idle_cycles=100, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
@@ -67,7 +67,7 @@ class PrefInterface:
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
                 pref_interface_fake_log(
-                    "Pref interface got kill signal, exiting",
+                    "Pref interface got kill signal, exiting (line 70)",
                     logging.INFO)
                 return
             #print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
