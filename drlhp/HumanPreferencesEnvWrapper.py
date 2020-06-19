@@ -225,7 +225,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
         if not minimum_prefs_met:
             # Confirm that we have at least `num_initial_prefs` training examples, and 1 validation example
             if current_train_size < num_initial_prefs or current_val_size < 1:
-                reward_predictor_logger.debug(f"Reward dbs of length {len(pref_db_train)}, {len(pref_db_val)}, waiting for length {num_initial_prefs}, 1 to start training")
+                reward_predictor_logger.debug(f"Reward dbs of length ({len(pref_db_train)}, {len(pref_db_val)}), waiting for minimum length ({num_initial_prefs}, 1) to start training")
                 time.sleep(1)
                 continue
             else:
