@@ -31,7 +31,7 @@ def fake_log(message, message_level, log_level, log_name):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
-                 min_segments_to_test=2, max_idle_cycles=100, n_pause_frames=4,
+                 min_segments_to_test=2, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
@@ -50,7 +50,6 @@ class PrefInterface:
         self.remaining_possible_pairs = 0
         self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
-        self.max_idle_cycles = max_idle_cycles
         self.n_pause_frames = n_pause_frames
         self.user_response_timeout = user_response_timeout
         easy_tf_log.set_dir(log_dir)
@@ -88,9 +87,6 @@ class PrefInterface:
                     seg_pair = self.sample_seg_pair()
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
-                    if idle_cycles > self.max_idle_cycles:
-                        pref_interface_fake_log("Preference interface has gone idle, exiting", logging.INFO)
-                        return
                     pref_interface_fake_log("Preference interface ran out of untested segments; waiting", logging.DEBUG)
                     # If we've tested all possible pairs of segments so far,
                     # we'll have to wait for more segments
