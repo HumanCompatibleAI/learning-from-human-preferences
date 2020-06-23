@@ -44,6 +44,7 @@ class RewardPredictorEnsemble:
                         lr=lr,
                         obs_shape=self.obs_shape)
                 self.rps.append(rp)
+
             self.init_op = tf.global_variables_initializer()
             # Why save_relative_paths=True?
             # So that the plain-text 'checkpoint' file written uses relative paths,
@@ -54,7 +55,10 @@ class RewardPredictorEnsemble:
 
         # Try to fix bug, based on here https://stackoverflow.com/questions/34001922/failedpreconditionerror-attempting-to-use-uninitialized-in-tensorflow
         init_op = tf.global_variables_initializer()
-        self.sess.run(init_op)
+        try:
+            self.sess.run(init_op)
+        except Exception as e:
+            print(e)
         self.checkpoint_dir = osp.join(log_dir,
                                         'reward_predictor_checkpoints')
         self.checkpoint_file = osp.join(self.checkpoint_dir, 'reward_predictor.ckpt')

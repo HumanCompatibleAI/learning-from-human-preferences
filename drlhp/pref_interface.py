@@ -112,7 +112,6 @@ class PrefInterface:
             if pref is not None:
                 # We don't need the rewards from this point on, so just send
                 # the frames
-                #print("PrefInterface sending preference to pref pipe!")
                 pref_pipe.put((s1.frames, s2.frames, pref))
             # If pref is None, the user answered "incomparable" for the segment
             # pair. The pair has been marked as tested; we just drop it.

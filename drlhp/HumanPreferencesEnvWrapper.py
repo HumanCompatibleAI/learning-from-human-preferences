@@ -11,7 +11,7 @@ from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor import RewardPredictorEnsemble
 from typing import Callable
-
+import tensorflow as tf
 
 PREFS_VAL_FRACTION = 0.2
 
@@ -128,7 +128,9 @@ def _make_reward_predictor(reward_predictor_network: Callable,
         lr=7e-4,
         obs_shape=obs_shape,
         logger=logger)
+    print("RewardPredictorEnsemble created")
     reward_predictor.init_network(load_ckpt_dir=checkpoint_dir)
+    print("RewardPredictorEnsemble initialized")
     return reward_predictor
 
 
@@ -187,14 +189,12 @@ def _train_reward_predictor(reward_predictor_network: Callable,
     reward_predictor_logger = logging.getLogger("_train_reward_predictor")
     reward_predictor_logger.setLevel(log_level)
     reward_predictor_logger.info("Reward predictor works at all")
-
     # Create a RewardPredictorEnsemble using the specified core network and obs shape
     reward_predictor = _make_reward_predictor(reward_predictor_network,
                                               log_dir,
                                               obs_shape,
                                               reward_predictor_logger,
                                               checkpoint_dir=pretrained_reward_predictor_dir)
-
     # Create a PrefBuffer that receives preferences from the PrefInterfaces and store them in PrefDBs
     pref_buffer = _load_or_create_pref_db(prefs_dir, max_prefs, reward_predictor_logger)
     pref_buffer.start_recv_thread(pref_pipe)
@@ -233,6 +233,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
         if reward_training_steps.value % database_refresh_interval == 0:
             pref_db_train, pref_db_val = pref_buffer.get_dbs()
 
+        print(f"Training reward predictor on {current_train_size} preferences, testing on {current_val_size}, iteration {reward_training_steps.value }")
         reward_predictor_logger.info(f"Training reward predictor on {current_train_size} preferences, testing on {current_val_size}, iteration {reward_training_steps.value }")
         reward_predictor.train(pref_db_train, pref_db_val, validation_interval)
         reward_training_steps.value += 1
@@ -411,7 +412,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         self.pref_interface_proc.start()
 
     def _start_reward_predictor_training(self):
-        self.reward_training_proc = mp.get_context('fork').Process(target=_train_reward_predictor, daemon=True,
+        self.reward_training_proc = mp.get_context('spawn').Process(target=_train_reward_predictor, daemon=True,
                                                                    args=(self.reward_predictor_network,
                                                                          self.train_reward,
                                                                          self.pretrained_reward_predictor_dir,

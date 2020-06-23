@@ -12,6 +12,7 @@ from drlhp.HumanPreferencesEnvWrapper import HumanPreferencesEnvWrapper
 import logging
 from realistic_benchmarks.wrappers import ActionMeaningsWrapper
 import time
+import tensorflow as tf
 from random import randint
 
 # Create dummy environment
@@ -42,8 +43,6 @@ def dummy_pixel_env():
     return env
 
 
-
-
 def test_segment_creation(dummy_pixel_env):
     # Test that we can build up segments from environment steps
 
@@ -62,10 +61,13 @@ def test_segment_creation(dummy_pixel_env):
         _ = drlhp_env.step(drlhp_env.action_space.sample())
     assert drlhp_env.segments_collected == 3
     drlhp_env.close()
+    time.sleep(3)
 
 
 def test_automatic_preference_collection(dummy_pixel_env):
     # Test that we can collect preference and that they're successfully added to the PrefDB
+
+    tf.reset_default_graph()
 
     drlhp_env = HumanPreferencesEnvWrapper(dummy_pixel_env,
                                            reward_predictor_network=net_cnn,
@@ -74,7 +76,8 @@ def test_automatic_preference_collection(dummy_pixel_env):
                                            train_reward=False,
                                            collect_prefs=True, # Do collect preferences into a pref_db, but don't train the reward predictor
                                            prefs_dir=None,
-                                           log_dir="testing_logs")
+                                           log_dir="testing_logs",
+                                           pref_interface_log_level=logging.DEBUG)
 
     drlhp_env.reset()
     time.sleep(5)
@@ -84,12 +87,13 @@ def test_automatic_preference_collection(dummy_pixel_env):
     assert drlhp_env.pref_db_size.value > 1
     print(f"Size of pref DB: {drlhp_env.pref_db_size.value}")
     drlhp_env.close()
+    time.sleep(3)
 
 
 def test_reward_training(dummy_pixel_env):
     # Test that we can take at least 5 training steps of the reward predictor, and successfully switch to
     # using that for our reward once that many steps are taken
-
+    tf.reset_default_graph()
     drlhp_env = HumanPreferencesEnvWrapper(dummy_pixel_env,
                                            reward_predictor_network=net_cnn,
                                            segment_length=5,
@@ -98,6 +102,7 @@ def test_reward_training(dummy_pixel_env):
                                            n_initial_prefs=4,
                                            train_reward=True,
                                            collect_prefs=True,
+                                           pref_interface_log_level=logging.DEBUG,
                                            reward_predictor_log_level=logging.DEBUG,
                                            env_wrapper_log_level=logging.DEBUG,
                                            prefs_dir=None,
@@ -112,4 +117,5 @@ def test_reward_training(dummy_pixel_env):
     print(f"Training steps taken: {drlhp_env.reward_training_steps.value}")
     assert drlhp_env.using_reward_from_predictor
     drlhp_env.close()
+    time.sleep(3)
 
