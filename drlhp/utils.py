@@ -13,6 +13,7 @@ from drlhp.deprecated.a2c.common.atari_wrappers import wrap_deepmind
 from drlhp.deprecated.a2c.common.misc_util import set_global_seeds
 from drlhp.deprecated.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from scipy.ndimage import zoom
+from multiprocessing import Process
 
 
 # https://github.com/joschu/modular_rl/blob/master/modular_rl/running_stat.py
@@ -114,30 +115,14 @@ class VideoRenderer:
         self.v = None
         self.fps = fps
         self.sleep_time = 1/self.fps
-        # self.proc = mp.get_context('spawn').Process(target=self.render, daemon=True)
-        # self.proc.start()
 
     def stop(self):
         self.stop_render = True
 
     def render(self, frames):
         v = Im()
-        # try:
-        #     frames = self.vid_queue.get(block=True)
-        #     print(f"Read frames of length {len(frames)} from vid queue")
-        #     self.current_frames = frames
-        # except queue.Empty:
-        #     print(f"Nothing in queue, reusing old frames of length {len(self.current_frames)}")
-        #     frames = self.current_frames
         t = 0
         while True:
-            # Add a grey dot on the last line showing position
-            # TODO add position dot back in
-            # width = frames[t].shape[1]
-            # fraction_played = t / len(frames)
-            # x = int(fraction_played * width)
-            # frames[t][-1][x] = 128
-
             start = time.time()
             zoomed_frame = zoom(frames[t], self.zoom_factor, order=1)
             v.imshow(zoomed_frame)
@@ -155,17 +140,6 @@ class VideoRenderer:
                     sleep_time = max(0, self.sleep_time-render_time)
                     time.sleep(sleep_time)
                     continue
-            # elif self.mode == VideoRenderer.restart_on_get_mode:
-            #     # Always try and get a new set of frames to show.
-            #     # If there is a new set of frames on the queue,
-            #     # restart playback with those frames immediately.
-            #     # Otherwise, just keep looping with the current frames.
-            #     try:
-            #         frames = self.vid_queue.get(block=False)
-            #         t = 0
-            #     except queue.Empty:
-            #         t = (t + self.playback_speed) % len(frames)
-            #         time.sleep(1/60)
 
     def get_queue_most_recent(self):
         # Make sure we at least get something
@@ -248,28 +222,6 @@ def batch_iter(data, batch_size, shuffle=False):
         yield batch
         start_idx += batch_size
 
-
-def make_env(env, env_id, seed=0):
-    if env is None:
-        if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-            pass
-        env = gym.make(env_id)
-        env.seed(seed)
-        if env_id == 'EnduroNoFrameskip-v4':
-            from drlhp.deprecated.enduro_wrapper import EnduroWrapper
-            env = EnduroWrapper(env)
-        return wrap_deepmind(env)
-    return env
-
-def make_envs(env, env_id, n_envs, seed):
-    def wrap_make_env(env, env_id, rank):
-        def _thunk():
-            return make_env(env, env_id, seed + rank)
-        return _thunk
-    set_global_seeds(seed)
-    env = SubprocVecEnv(env_id, [wrap_make_env(env, env_id, i)
-                                 for i in range(n_envs)])
-    return env
 
 
 class ForkedPdb(pdb.Pdb):

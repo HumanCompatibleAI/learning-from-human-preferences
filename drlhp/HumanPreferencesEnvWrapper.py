@@ -93,9 +93,6 @@ def _run_pref_interface(pref_interface: PrefInterface,
                            (specifically, it will trigger pref_interface.run() to return so we can easily join
                            the process)
     """
-    #sys.stdin = os.fdopen(0)
-
-    print("Running pref interface func")
     pref_interface.run(seg_pipe=seg_pipe,
                        pref_pipe=pref_pipe,
                        remaining_pairs=remaining_pairs,
@@ -189,7 +186,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
 
     reward_predictor_logger = logging.getLogger("_train_reward_predictor")
     reward_predictor_logger.setLevel(log_level)
-    reward_predictor_logger.info("Reward predictor works at all")
+    reward_predictor_logger.info("Process for PrefDB and Reward Predictor started")
     # Create a RewardPredictorEnsemble using the specified core network and obs shape
     reward_predictor = _make_reward_predictor(reward_predictor_network,
                                               log_dir,
@@ -324,8 +321,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         :param reward_predictor_log_level: The log level of the logger corresponding to the reward predictor training function
         :param pref_interface_log_level: The log level of the logger used by the preference interface
         """
-
-        # TODO maybe move creation of the Pref Interface inside rather than have it created externally?
 
         # Recommend using 'spawn' for non synthetic preferences and 'fork' for synthetic
         super(HumanPreferencesEnvWrapper, self).__init__(env)
