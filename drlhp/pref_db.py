@@ -185,13 +185,12 @@ class PrefBuffer:
         return train_copy, val_copy
 
     def wait_until_len(self, min_len):
-        min_val_len = int(0.3*min_len)
         while True:
             self.lock.acquire()
             train_len = len(self.train_db)
             val_len = len(self.val_db)
             self.lock.release()
-            if train_len >= min_len: # and val_len > min_val_len:
+            if train_len >= min_len and val_len > 0:
                 break
             print("Waiting for preferences; {}/{} train so far, {}/{} val ".format(train_len,
                                                                                    min_len,
