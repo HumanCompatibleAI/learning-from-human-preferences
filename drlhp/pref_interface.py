@@ -31,7 +31,7 @@ def fake_log(message, message_level, log_level, log_name):
 class PrefInterface:
 
     def __init__(self, synthetic_prefs, max_segs, log_dir, zoom=4, channels=3,
-                 min_segments_to_test=2, n_pause_frames=4,
+                 min_segments_to_test=10, n_pause_frames=4,
                  user_response_timeout=3):
         if not synthetic_prefs:
             self.vid_q = mp.get_context('spawn').Queue()
@@ -47,9 +47,8 @@ class PrefInterface:
         self.seg_idx = 0
         self.segments = []
         self.channels = channels
-        self.remaining_possible_pairs = 0
-        self.tested_pairs = set()  # For O(1) lookup
         self.max_segs = max_segs
+        self.tested_pairs = set()
         self.n_pause_frames = n_pause_frames
         self.user_response_timeout = user_response_timeout
         easy_tf_log.set_dir(log_dir)
@@ -58,11 +57,10 @@ class PrefInterface:
         if self.renderer:
             self.renderer.stop()
 
-    def run(self, seg_pipe, pref_pipe, remaining_pairs, kill_processes, log_level):
+    def run(self, seg_pipe, pref_pipe, kill_processes, log_level):
         log_name = 'pref_interface.run'
         pref_interface_fake_log = partial(fake_log, log_name=log_name, log_level=log_level)
         self.recv_segments(seg_pipe)
-        idle_cycles = 0
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
                 pref_interface_fake_log(
@@ -77,20 +75,13 @@ class PrefInterface:
 
         pref_interface_fake_log(f"Preference interface has at least {self.min_segments_to_test} segments, starting to test", logging.INFO)
         while True and kill_processes.value == 0:
-            seg_pair = None
-            while seg_pair is None:
-                if kill_processes.value == 1:
-                    pref_interface_fake_log("Pref interface got kill signal, exiting", logging.INFO)
-                    return
-                try:
-                    seg_pair = self.sample_seg_pair()
-                    remaining_pairs.value = self.remaining_possible_pairs
-                except IndexError:
-                    pref_interface_fake_log("Preference interface ran out of untested segments; waiting", logging.DEBUG)
-                    # If we've tested all possible pairs of segments so far, we'll have to wait for more segments
-                    idle_cycles += 1
-                    time.sleep(1.0)
-                    self.recv_segments(seg_pipe)
+            if kill_processes.value == 1:
+                pref_interface_fake_log("Pref interface got kill signal, exiting", logging.INFO)
+                return
+
+
+            seg_pair = self.sample_seg_pair()
+
             s1, s2 = seg_pair
 
             pref_interface_fake_log(f"Querying preference for segments {s1.hash} and {s2.hash}", logging.DEBUG)
@@ -144,17 +135,9 @@ class PrefInterface:
         Sample a random pair of segments which hasn't yet been tested.
         """
         segment_idxs = list(range(len(self.segments)))
-        shuffle(segment_idxs)
-        possible_pairs = combinations(segment_idxs, 2)
-        self.remaining_possible_pairs = len(list(deepcopy(possible_pairs))) - len(self.tested_pairs)
-        for i1, i2 in possible_pairs:
-            i1, i2 = min(i1, i2), max(i1, i2)
-            # these should now always be in a canonical order
-            s1, s2 = self.segments[i1], self.segments[i2]
-            if (s1.hash, s2.hash) not in self.tested_pairs:
-                self.tested_pairs.add((s1.hash, s2.hash))
-                return s1, s2
-        raise IndexError("No segment pairs yet untested")
+        possible_pairs = list(combinations(segment_idxs, 2))
+        ind1, ind2 = possible_pairs[0]
+        return self.segments[ind1], self.segments[ind2]
 
     def ask_user(self, s1, s2, log_func):
         vid = []

@@ -75,7 +75,6 @@ def _load_or_create_pref_db(prefs_dir: str,
 def _run_pref_interface(pref_interface: PrefInterface,
                         seg_pipe: mp.Queue,
                         pref_pipe: mp.Queue,
-                        remaining_pairs: mp.Value,
                         kill_processes: mp.Value,
                         log_level: int = logging.INFO):
     """
@@ -95,7 +94,6 @@ def _run_pref_interface(pref_interface: PrefInterface,
     """
     pref_interface.run(seg_pipe=seg_pipe,
                        pref_pipe=pref_pipe,
-                       remaining_pairs=remaining_pairs,
                        kill_processes=kill_processes,
                        log_level=log_level)
 
@@ -261,7 +259,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
                  validation_interval: int = 10,
                  reward_database_refresh_interval: int = 1,
                  synthetic_prefs: bool = True,
-                 max_pref_interface_segs: int = 50,
+                 max_pref_interface_segs: int = 25,
                  zoom_ratio: int = 4,
                  channels: int = 3,
                  env_wrapper_log_level: int = logging.INFO,
@@ -375,7 +373,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         # TODO ground due to timing issues
         self.seg_pipe = mp.get_context(self.mp_context).Queue(maxsize=5)
         self.pref_pipe = mp.get_context(self.mp_context).Queue(maxsize=1)
-        self.remaining_pairs = mp.get_context(self.mp_context).Value('i', 0)
         self.pref_db_size = mp.get_context(self.mp_context).Value('i', 0)
         self.kill_pref_interface_flag = mp.get_context(self.mp_context).Value('i', 0)
         self.kill_reward_training_flag = mp.get_context(self.mp_context).Value('i', 0)
@@ -402,14 +399,13 @@ class HumanPreferencesEnvWrapper(Wrapper):
                                                                            args=(self.preference_interface,
                                                                                  self.seg_pipe,
                                                                                  self.pref_pipe,
-                                                                                 self.remaining_pairs,
                                                                                  self.kill_pref_interface_flag,
                                                                                  self.pref_interface_log_level))
         self.pref_interface_proc.start()
 
     def _start_reward_predictor_training(self):
         self.reward_training_proc = mp.get_context('spawn').Process(target=_train_reward_predictor, daemon=True,
-                                                                   args=(self.reward_predictor_network,
+                                                                    args=(self.reward_predictor_network,
                                                                          self.train_reward,
                                                                          self.pretrained_reward_predictor_dir,
                                                                          self.obs_shape,

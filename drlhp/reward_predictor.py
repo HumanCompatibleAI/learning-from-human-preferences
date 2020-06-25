@@ -293,7 +293,6 @@ class RewardPredictorNetwork:
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
         h, w, c = obs_shape
-        # NOTE FOR FUTURE used to be c*4
         s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
         s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
         # For each trajectory segment, there is one human judgement.
@@ -302,7 +301,6 @@ class RewardPredictorNetwork:
         # Concatenate trajectory segments so that the first dimension is just
         # frames
         # (necessary because of conv layer's requirements on input shape)
-        # NOTE FOR FUTURE: used to be c*4
         s1_unrolled = tf.reshape(s1, [-1, h, w, c])
         s2_unrolled = tf.reshape(s2, [-1, h, w, c])
 
