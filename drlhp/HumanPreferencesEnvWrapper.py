@@ -10,6 +10,7 @@ import logging
 from drlhp.pref_db import Segment, PrefDB, PrefBuffer
 from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor import RewardPredictorEnsemble
+from drlhp.reward_predictor_core_network import net_cnn
 from typing import Callable
 import tensorflow as tf
 
@@ -246,7 +247,7 @@ def _train_reward_predictor(reward_predictor_network: Callable,
 class HumanPreferencesEnvWrapper(Wrapper):
     def __init__(self,
                  env: Env,
-                 reward_predictor_network: Callable,
+                 reward_predictor_network: Callable = net_cnn,
                  train_reward: bool = True,
                  collect_prefs: bool = True,
                  segment_length: int = 40,
@@ -377,7 +378,7 @@ class HumanPreferencesEnvWrapper(Wrapper):
         # Create Queues and Values to handle multiprocessing communication
         # TODO figure out how to make the mechanics of this work with larger Queues, so we don't drop segments on the
         # TODO ground due to timing issues
-        self.seg_pipe = mp.get_context(self.mp_context).Queue(maxsize=1)
+        self.seg_pipe = mp.get_context(self.mp_context).Queue(maxsize=5)
         self.pref_pipe = mp.get_context(self.mp_context).Queue(maxsize=1)
         self.remaining_pairs = mp.get_context(self.mp_context).Value('i', 0)
         self.pref_db_size = mp.get_context(self.mp_context).Value('i', 0)
@@ -532,14 +533,24 @@ class HumanPreferencesEnvWrapper(Wrapper):
             return obs, reward, done, info
 
     def switch_to_true_reward(self):
-        if self.force_return_true_reward:
+        if not self.using_reward_from_predictor:
+            raise Warning("Environment has no reward predictor loaded, and is thus returning true reward")
+        elif self.force_return_true_reward:
             raise Warning("Environment already returning true reward, no change")
-        self.force_return_true_reward = True
+        else:
+            self.using_reward_from_predictor = False
+            self.force_return_true_reward = True
 
     def switch_to_predicted_reward(self):
+        """
+        Note: this only works to undo a prior forcing of true reward
+        if a reward model is already loaded, it can't cause a reward model to exist if it isn't present
+        """
         if not self.force_return_true_reward:
             raise Warning("Environment already returning predicted reward, no change")
-        self.force_return_true_reward = False
+        else:
+            self.using_reward_from_predictor = True
+            self.force_return_true_reward = False
 
 
     def _cleanup_processes(self):
