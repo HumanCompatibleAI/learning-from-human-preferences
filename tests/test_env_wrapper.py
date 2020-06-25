@@ -8,7 +8,7 @@ import gym
 from stable_baselines.common.atari_wrappers import FrameStack
 from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor_core_network import net_cnn
-from drlhp.HumanPreferencesEnvWrapper import HumanPreferencesEnvWrapper
+from drlhp import HumanPreferencesEnvWrapper
 import logging
 from realistic_benchmarks.wrappers import ActionMeaningsWrapper
 import time
