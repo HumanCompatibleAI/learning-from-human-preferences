@@ -69,7 +69,6 @@ class PrefInterface:
                     "Pref interface got kill signal, exiting (line 70)",
                     logging.INFO)
                 return
-            #print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
             pref_interface_fake_log(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping", logging.DEBUG)
             # This sleep time is load bearing, because if you sleep for too long you'll drop more segments on the ground due to
             # not re-querying the segment pipe
