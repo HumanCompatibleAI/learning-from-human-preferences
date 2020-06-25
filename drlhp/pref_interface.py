@@ -66,17 +66,16 @@ class PrefInterface:
         while len(self.segments) < self.min_segments_to_test:
             if kill_processes.value == 1:
                 pref_interface_fake_log(
-                    "Pref interface got kill signal, exiting (line 70)",
+                    "Pref interface got kill signal before collecting enough segments, exiting",
                     logging.INFO)
                 return
-            #print(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping")
             pref_interface_fake_log(f"Pref interface only has {len(self.segments)} segments, waiting for {self.min_segments_to_test}, sleeping", logging.DEBUG)
             # This sleep time is load bearing, because if you sleep for too long you'll drop more segments on the ground due to
             # not re-querying the segment pipe
             time.sleep(0.05)
             self.recv_segments(seg_pipe)
 
-        pref_interface_fake_log("Preference interface has more than two segments, starting to test", logging.INFO)
+        pref_interface_fake_log(f"Preference interface has at least {self.min_segments_to_test} segments, starting to test", logging.INFO)
         while True and kill_processes.value == 0:
             seg_pair = None
             while seg_pair is None:
@@ -88,8 +87,7 @@ class PrefInterface:
                     remaining_pairs.value = self.remaining_possible_pairs
                 except IndexError:
                     pref_interface_fake_log("Preference interface ran out of untested segments; waiting", logging.DEBUG)
-                    # If we've tested all possible pairs of segments so far,
-                    # we'll have to wait for more segments
+                    # If we've tested all possible pairs of segments so far, we'll have to wait for more segments
                     idle_cycles += 1
                     time.sleep(1.0)
                     self.recv_segments(seg_pipe)
@@ -98,7 +96,7 @@ class PrefInterface:
             pref_interface_fake_log(f"Querying preference for segments {s1.hash} and {s2.hash}", logging.DEBUG)
 
             if not self.synthetic_prefs:
-                pref = self.ask_user(s1, s2)
+                pref = self.ask_user(s1, s2, log_func=pref_interface_fake_log)
             else:
                 if sum(s1.rewards) > sum(s2.rewards):
                     pref = (1.0, 0.0)
@@ -149,9 +147,6 @@ class PrefInterface:
         shuffle(segment_idxs)
         possible_pairs = combinations(segment_idxs, 2)
         self.remaining_possible_pairs = len(list(deepcopy(possible_pairs))) - len(self.tested_pairs)
-        # print(f"Num segments: {len(self.segments)}")
-        # print(f"Remaining pairs: {self.remaining_possible_pairs}")
-        # print(f"Tested pairs: {len(self.tested_pairs)}")
         for i1, i2 in possible_pairs:
             i1, i2 = min(i1, i2), max(i1, i2)
             # these should now always be in a canonical order
