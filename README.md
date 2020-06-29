@@ -96,7 +96,7 @@ save out preferences to a file, you can call `wrapped_env.save_prefs()`. By defa
 
 ### Training reward from pre-collected preferences 
 ```wrapped_env = HumanPreferencesEnvWrapper(env, 
-                                            prefs_dir=<dir>
+                                            prefs_dir=<prefs_dir>
                                             collect_prefs=False, 
                                             train_reward=True, 
                                             reward_predictor_ckpt_interval=10)
