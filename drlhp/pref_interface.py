@@ -132,7 +132,7 @@ class PrefInterface:
 
     def sample_seg_pair(self):
         """
-        Sample a random pair of segments which hasn't yet been tested.
+        Sample a random pair of segments (which may already have been tested).
         """
         segment_idxs = list(range(len(self.segments)))
         possible_pairs = list(combinations(segment_idxs, 2))
