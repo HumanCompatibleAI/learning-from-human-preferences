@@ -135,8 +135,8 @@ class PrefInterface:
         Sample a random pair of segments (which may already have been tested).
         """
         segment_idxs = list(range(len(self.segments)))
-        possible_pairs = list(combinations(segment_idxs, 2))
-        ind1, ind2 = possible_pairs[0]
+        shuffle(segment_idxs)
+        ind1, ind2 = segment_idxs[:2]
         return self.segments[ind1], self.segments[ind2]
 
     def ask_user(self, s1, s2, log_func):
