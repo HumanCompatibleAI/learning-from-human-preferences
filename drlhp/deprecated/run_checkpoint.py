@@ -16,10 +16,11 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
-from utils import make_env
+from drlhp.utils import make_env
 
 
 def main():
+    #TODO remove repeated code from below
     args = parse_args()
 
     env = make_env(args.env)
@@ -31,27 +32,34 @@ def main():
 
     run_agent(env, model, reward_predictor, args.frame_interval_ms)
 
+def run_checkpoint_external(env, policy_ckpt_dir, frame_interval_ms, reward_predictor_ckpt_dir=None):
+    model = get_model(policy_ckpt_dir)
+    if reward_predictor_ckpt_dir:
+        reward_predictor = get_reward_predictor(reward_predictor_ckpt_dir)
+    else:
+        reward_predictor = None
+
+    run_agent(env, model, reward_predictor, frame_interval_ms)
 
 def run_agent(env, model, reward_predictor, frame_interval_ms):
-    nenvs = 1
-    nstack = int(model.step_model.X.shape[-1])
-    nh, nw, nc = env.observation_space.shape
-    obs = np.zeros((nenvs, nh, nw, nc * nstack), dtype=np.uint8)
-    model_nenvs = int(model.step_model.X.shape[0])
+    nenvs, nh, nw, nc = [int(el) for el in model.step_model.obs_ph.shape]
+    env_h, env_w, env_c = env.observation_space.shape
+    obs = np.zeros((1, nh, nw, nc), dtype=np.uint8)
+    nstack = nc/env_c
     states = model.initial_state
     if reward_predictor:
         value_graph = ValueGraph()
     while True:
         raw_obs = env.reset()
-        update_obs(obs, raw_obs, nc)
+        update_obs(obs, raw_obs, env_c)
         episode_reward = 0
         done = False
         while not done:
-            model_obs = np.vstack([obs] * model_nenvs)
-            actions, _, states = model.step(model_obs, states, [done])
+            model_obs = np.vstack([obs] * nenvs)
+            actions, _, states, _ = model.step(model_obs, states, [done])
             action = actions[0]
             raw_obs, reward, done, _ = env.step(action)
-            obs = update_obs(obs, raw_obs, nc)
+            obs = update_obs(obs, raw_obs, env_c)
             episode_reward += reward
             env.render()
             if reward_predictor is not None:

@@ -1,6 +1,6 @@
 import numpy as np
 from multiprocessing import Process, Pipe
-from a2c.common.vec_env import VecEnv
+from drlhp.deprecated.a2c.common.vec_env import VecEnv
 
 def worker(remote, env_fn_wrapper):
     env = env_fn_wrapper.x()
@@ -20,7 +20,7 @@ def worker(remote, env_fn_wrapper):
         elif cmd == 'get_spaces':
             remote.send((env.action_space, env.observation_space))
         elif cmd == 'get_action_meanings':
-            remote.send(env.unwrapped.get_action_meanings())
+            remote.send(env.get_action_meanings())
         else:
             raise NotImplementedError
 

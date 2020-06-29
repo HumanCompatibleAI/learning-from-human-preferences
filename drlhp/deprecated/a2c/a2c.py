@@ -3,17 +3,20 @@ import os.path as osp
 import queue
 import time
 
+from copy import deepcopy
 import cloudpickle
 import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
 import tensorflow as tf
+import cv2
 
-from a2c import logger
-from a2c.a2c.utils import (cat_entropy, discount_with_dones,
-                           find_trainable_variables, mse)
-from a2c.common import explained_variance, set_global_seeds
-from pref_db import Segment
+from drlhp.deprecated.a2c import logger
+from drlhp.deprecated.a2c.utils import (discount_with_dones,
+                                  find_trainable_variables, mse)
+from drlhp.deprecated.a2c.common.math_util import explained_variance
+from drlhp.deprecated.a2c.common.misc_util import set_global_seeds
+from drlhp.pref_db import Segment
 
 
 class Model(object):
@@ -37,47 +40,62 @@ class Model(object):
             inter_op_parallelism_threads=num_procs)
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
-        nbatch = nenvs * nsteps
+        train_batch = nenvs * nsteps
+        # CHANGE: A2C has separate variables for n_batch_step and n_batch_train
+        print("Create placeholders")
 
-        A = tf.placeholder(tf.int32, [nbatch])
-        ADV = tf.placeholder(tf.float32, [nbatch])
-        R = tf.placeholder(tf.float32, [nbatch])
+        #TODO check that this works for other action spaces
+
+        # CHANGE: A2C hs tehse have shape None rather than shape train_batch
+        A = tf.placeholder(tf.int32, [train_batch] + list(ac_space.shape))
+        ADV = tf.placeholder(tf.float32, [train_batch])
+        R = tf.placeholder(tf.float32, [train_batch])
         LR = tf.placeholder(tf.float32, [])
 
+        print("Initialize policy objects")
+        # CHANGE: A2C allows you to pass in policy_kwargs at this juncture
+        # This would make it way easier to do
         step_model = policy(
-            sess, ob_space, ac_space, nenvs, 1, nstack, reuse=False)
+            sess, ob_space, ac_space, nenvs, 1, nenvs, reuse=False)
         train_model = policy(
-            sess, ob_space, ac_space, nenvs, nsteps, nstack, reuse=True)
+            sess, ob_space, ac_space, nenvs, nsteps, train_batch, reuse=True)
 
-        neglogpac = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=train_model.pi, labels=A)
+        neglogpac = train_model.proba_distribution.neglogp(A)
+
         pg_loss = tf.reduce_mean(ADV * neglogpac)
-        vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.vf), R))
-        entropy = tf.reduce_mean(cat_entropy(train_model.pi))
-        loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef
+        vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.value_fn), R))
+        entropy = tf.reduce_mean(train_model.proba_distribution.entropy())
+        loss = pg_loss + vf_loss * vf_coef - entropy * ent_coef
 
+        # CHANGE: A2C uses tf_util.get_trainable_vars("model")
         params = find_trainable_variables("model")
+
         grads = tf.gradients(loss, params)
         if max_grad_norm is not None:
             grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
         grads = list(zip(grads, params))
+        print("Create trainer")
         trainer = tf.train.RMSPropOptimizer(
             learning_rate=LR, decay=alpha, epsilon=epsilon)
         _train = trainer.apply_gradients(grads)
+        # CHANGE: In A2C, global_variables_initializer() is run here
 
         def train(obs, states, rewards, masks, actions, values):
+            # Equivalent of _train_step() in A2C
             advs = rewards - values
             n_steps = len(obs)
             for _ in range(n_steps):
                 cur_lr = lr_scheduler.value()
             td_map = {
-                train_model.X: obs,
+                train_model.obs_ph: obs,
                 A: actions,
                 ADV: advs,
                 R: rewards,
                 LR: cur_lr
             }
-            if states != []:
+
+            if states:
+                # TODO make this work for newer stateful policies
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
             policy_loss, value_loss, policy_entropy, _ = sess.run(
@@ -125,12 +143,23 @@ class Runner(object):
         self.model = model
         nh, nw, nc = env.observation_space.shape
         nenv = env.num_envs
+
+        # CHANGE: In A2C, this is defined as being of shape
+        # (n_env*n_steps, nh, nw, nc)
+        # Assuming that env.observation_space.shape = (nh, nw, nc)
         self.batch_ob_shape = (nenv * nsteps, nh, nw, nc * nstack)
+
+        # CHANGE: In A2C, this is defined as being of shape
+        # (n__env, nh, nw, nc) According to the same observation space assumption
         self.obs = np.zeros((nenv, nh, nw, nc * nstack), dtype=np.uint8)
         # The first stack of 4 frames: the first 3 frames are zeros,
         # with the last frame coming from env.reset().
+        print("Got to before reset")
+        print("Shape of self.obs: {}".format(self.obs.shape))
         obs = env.reset()
+        print("Finished env reset")
         self.update_obs(obs)
+        print("Finished updating obs")
         self.gamma = gamma
         self.nsteps = nsteps
         self.states = model.initial_state
@@ -145,12 +174,14 @@ class Runner(object):
 
         self.episode_frames = []
         self.episode_vid_queue = episode_vid_queue
+        print("Got to end of Runner creation")
 
     def update_obs(self, obs):
         # Do frame-stacking here instead of the FrameStack wrapper to reduce
         # IPC overhead
-        self.obs = np.roll(self.obs, shift=-1, axis=3)
-        self.obs[:, :, :, -1] = obs[:, :, :, 0]
+        # TODO take more general channel values
+        self.obs = np.roll(self.obs, shift=-3, axis=3)
+        self.obs[:, :, :, -3:] = obs[:, :, :, 0:3]
 
     def update_segment_buffer(self, mb_obs, mb_rewards, mb_dones):
         # Segments are only generated from the first worker.
@@ -158,14 +189,18 @@ class Runner(object):
         e0_obs = mb_obs[0]
         e0_rew = mb_rewards[0]
         e0_dones = mb_dones[0]
-        assert_equal(e0_obs.shape, (self.nsteps, 84, 84, 4))
-        assert_equal(e0_rew.shape, (self.nsteps, ))
-        assert_equal(e0_dones.shape, (self.nsteps, ))
-
+        assert_equal(e0_obs.shape[0], self.nsteps)
+        # TODO make this general to nstack parameter
+        assert(e0_obs.shape[-1] % 4 == 0)
+        assert_equal(e0_rew.shape[0], self.nsteps)
+        assert_equal(e0_dones.shape[0], self.nsteps)
+        # TODO generalize across num_channels
+        converted_image = cv2.cvtColor(e0_obs[0][:, :, -3:], cv2.COLOR_RGB2BGR)
+        cv2.imwrite("eo_obs_segment_buffer.png", converted_image)
         for step in range(self.nsteps):
             self.segment.append(np.copy(e0_obs[step]), np.copy(e0_rew[step]))
-            if len(self.segment) == 25 or e0_dones[step]:
-                while len(self.segment) < 25:
+            if len(self.segment) == 40 or e0_dones[step]:
+                while len(self.segment) < 40:
                     # Pad to 25 steps long so that all segments in the batch
                     # have the same length.
                     # Note that the reward predictor needs the full frame
@@ -188,7 +223,8 @@ class Runner(object):
             # Here we only need to send the last frame (the most recent one)
             # from the 4-frame stack, because we're just showing output to
             # the user.
-            self.episode_frames.append(e0_obs[step, :, :, -1])
+            # TODO make general for num_channels
+            self.episode_frames.append(e0_obs[step, :, :, -3])
             if e0_dones[step]:
                 self.episode_vid_queue.put(self.episode_frames)
                 self.episode_frames = []
@@ -201,8 +237,12 @@ class Runner(object):
 
         # Run for nsteps steps in the environment
         for _ in range(self.nsteps):
-            actions, values, states = self.model.step(self.obs, self.states,
+            actions, values, states, _ = self.model.step(self.obs, self.states,
                                                       self.dones)
+            # actions here are of shape (1, 11)
+
+            # IMPORTANT: Here we are adding multiple copies of the
+            # stacked version of obs, and that's what we pass to the update_segment_buffer
             mb_obs.append(np.copy(self.obs))
             mb_actions.append(actions)
             mb_values.append(values)
@@ -261,8 +301,15 @@ class Runner(object):
         # action.)
         logging.debug("Original rewards:\n%s", mb_rewards)
         if self.reward_predictor:
-            assert_equal(mb_obs.shape, (nenvs, self.nsteps, 84, 84, 4))
-            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, 84, 84, 4)
+            assert_equal(mb_obs.shape[0], nenvs)
+            assert_equal(mb_obs.shape[1], self.nsteps)
+            # TODO make general to stacking sizes other than 4
+            assert(mb_obs.shape[-1] % 4 == 0)
+            # TODO make general across num_channels
+            h, w, c = mb_obs.shape[-3:]
+
+            # TODO figure out what this reshape is doing here and whether it's necessary pre-reward-predictor
+            mb_obs_allenvs = mb_obs.reshape(nenvs * self.nsteps, h, w, c)
 
             rewards_allenvs = self.reward_predictor.reward(mb_obs_allenvs)
             assert_equal(rewards_allenvs.shape, (nenvs * self.nsteps, ))
@@ -294,11 +341,18 @@ class Runner(object):
             else:
                 rewards = discount_with_dones(rewards, dones, self.gamma)
             mb_rewards[n] = rewards
+        # Well, there's the culprit
 
-        mb_rewards = mb_rewards.flatten()
-        mb_actions = mb_actions.flatten()
-        mb_values = mb_values.flatten()
-        mb_masks = mb_masks.flatten()
+        def flatten_correctly(arr):
+            assert arr.shape[0] == 1
+            new_shape = arr.shape[1:]
+            return arr.reshape(new_shape)
+
+        mb_rewards = flatten_correctly(mb_rewards)
+        mb_actions = flatten_correctly(mb_actions)
+        mb_values = flatten_correctly(mb_values)
+        mb_masks = flatten_correctly(mb_masks)
+
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
 
@@ -317,7 +371,7 @@ def learn(policy,
           epsilon=1e-5,
           alpha=0.99,
           gamma=0.99,
-          log_interval=100,
+          log_interval=25,
           ckpt_save_interval=1000,
           ckpt_load_dir=None,
           gen_segments=False,
@@ -327,9 +381,16 @@ def learn(policy,
 
     tf.reset_default_graph()
     set_global_seeds(seed)
-
     nenvs = env.num_envs
-    ob_space = env.observation_space
+    ob_space = deepcopy(env.observation_space)
+    nh, nw, nc = ob_space.shape
+    new_shape = (nh, nw, nc*nstack)
+    # # TODO make this more general/pull zero and 255 out of existing obs space
+    low, high = np.zeros(new_shape), np.full(new_shape, 255)
+    ob_space.shape = new_shape
+    ob_space.low = low
+    ob_space.high = high
+
     ac_space = env.action_space
     num_procs = len(env.remotes)  # HACK
 
@@ -365,7 +426,7 @@ def learn(policy,
         print("Loaded policy from checkpoint '{}'".format(ckpt_load_path))
 
     ckpt_save_path = osp.join(ckpt_save_dir, 'policy.ckpt')
-
+    print("Model loaded")
     runner = Runner(env=env,
                     model=model,
                     nsteps=nsteps,
@@ -381,7 +442,6 @@ def learn(policy,
     nbatch = nenvs * nsteps
     fps_tstart = time.time()
     fps_nsteps = 0
-
     print("Starting workers")
 
     # Before we're told to start training the policy itself,
@@ -396,14 +456,13 @@ def learn(policy,
             break
 
     print("Starting policy training")
-
+    print("Max val: {}".format(total_timesteps // nbatch + 1))
     for update in range(1, total_timesteps // nbatch + 1):
         # Run for nsteps
-        obs, states, rewards, masks, actions, values = runner.run()
 
+        obs, states, rewards, masks, actions, values = runner.run()
         policy_loss, value_loss, policy_entropy, cur_lr = model.train(
             obs, states, rewards, masks, actions, values)
-
         fps_nsteps += nbatch
 
         if update % log_interval == 0 and update != 0:

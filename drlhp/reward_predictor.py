@@ -1,13 +1,14 @@
-import logging
+import tensorflow.compat.v1 as tf
+tf.logging.set_verbosity(tf.logging.ERROR)
+
 import os.path as osp
 import time
 
 import easy_tf_log
 import numpy as np
 from numpy.testing import assert_equal
-import tensorflow as tf
 
-from utils import RunningStat, batch_iter
+from drlhp.utils import RunningStat, batch_iter
 
 
 class RewardPredictorEnsemble:
@@ -16,41 +17,34 @@ class RewardPredictorEnsemble:
     """
 
     def __init__(self,
-                 cluster_job_name,
                  core_network,
+                 obs_shape,
+                 logger,
                  lr=1e-4,
-                 cluster_dict=None,
                  batchnorm=False,
                  dropout=0.0,
                  n_preds=1,
                  log_dir=None):
         self.n_preds = n_preds
-        graph, self.sess = self.init_sess(cluster_dict, cluster_job_name)
-        # Why not just use soft device placement? With soft placement,
-        # if we have a bug which prevents an operation being placed on the GPU
-        # (e.g. we're using uint8s for operations that the GPU can't do),
-        # then TensorFlow will be silent and just place the operation on a CPU.
-        # Instead, we want to say: if there's a GPU present, definitely try and
-        # put things on the GPU. If it fails, tell us!
-        if tf.test.gpu_device_name():
-            worker_device = "/job:{}/task:0/gpu:0".format(cluster_job_name)
-        else:
-            worker_device = "/job:{}/task:0".format(cluster_job_name)
-        device_setter = tf.train.replica_device_setter(
-            cluster=cluster_dict,
-            ps_device="/job:ps/task:0",
-            worker_device=worker_device)
+        self.obs_shape = obs_shape
+        self.sess = tf.Session()
+        self.logger = logger
+        graph = tf.get_default_graph()
         self.rps = []
         with graph.as_default():
             for pred_n in range(n_preds):
-                with tf.device(device_setter):
-                    with tf.variable_scope("pred_{}".format(pred_n)):
-                        rp = RewardPredictorNetwork(
-                            core_network=core_network,
-                            dropout=dropout,
-                            batchnorm=batchnorm,
-                            lr=lr)
+                #with tf.device(device_setter):
+
+                # Create pred_n different reward predictors, each of which are in their own variable scope
+                with tf.variable_scope("pred_{}".format(pred_n)):
+                    rp = RewardPredictorNetwork(
+                        core_network=core_network,
+                        dropout=dropout,
+                        batchnorm=batchnorm,
+                        lr=lr,
+                        obs_shape=self.obs_shape)
                 self.rps.append(rp)
+
             self.init_op = tf.global_variables_initializer()
             # Why save_relative_paths=True?
             # So that the plain-text 'checkpoint' file written uses relative paths,
@@ -59,9 +53,15 @@ class RewardPredictorEnsemble:
             self.saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
             self.summaries = self.add_summary_ops()
 
-        self.checkpoint_file = osp.join(log_dir,
-                                        'reward_predictor_checkpoints',
-                                        'reward_predictor.ckpt')
+        # Try to fix bug, based on here https://stackoverflow.com/questions/34001922/failedpreconditionerror-attempting-to-use-uninitialized-in-tensorflow
+        init_op = tf.global_variables_initializer()
+        try:
+            self.sess.run(init_op)
+        except Exception as e:
+            print(e)
+        self.checkpoint_dir = osp.join(log_dir,
+                                        'reward_predictor_checkpoints')
+        self.checkpoint_file = osp.join(self.checkpoint_dir, 'reward_predictor.ckpt')
         self.train_writer = tf.summary.FileWriter(
             osp.join(log_dir, 'reward_predictor', 'train'), flush_secs=5)
         self.test_writer = tf.summary.FileWriter(
@@ -113,7 +113,7 @@ class RewardPredictorEnsemble:
                     load_ckpt_dir)
                 raise FileNotFoundError(msg)
             self.saver.restore(self.sess, ckpt_file)
-            print("Loaded reward predictor checkpoint from '{}'".format(ckpt_file))
+            self.logger.info("Loaded reward predictor checkpoint from '{}'".format(ckpt_file))
         else:
             self.sess.run(self.init_op)
 
@@ -121,14 +121,13 @@ class RewardPredictorEnsemble:
         ckpt_name = self.saver.save(self.sess,
                                     self.checkpoint_file,
                                     self.n_steps)
-        print("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
+        self.logger.info("Saved reward predictor checkpoint to '{}'".format(ckpt_name))
 
     def raw_rewards(self, obs):
         """
         Return (unnormalized) reward for each frame of a single segment
         from each member of the ensemble.
         """
-        assert_equal(obs.shape[1:], (84, 84, 4))
         n_steps = obs.shape[0]
         feed_dict = {}
         for rp in self.rps:
@@ -151,13 +150,12 @@ class RewardPredictorEnsemble:
         ensemble separately, then averaging the resulting rewards across all
         ensemble members.)
         """
-        assert_equal(obs.shape[1:], (84, 84, 4))
         n_steps = obs.shape[0]
 
         # Get unnormalized rewards
 
         ensemble_rs = self.raw_rewards(obs)
-        logging.debug("Unnormalized rewards:\n%s", ensemble_rs)
+        #self.logger.debug("Unnormalized rewards:\n%s", ensemble_rs)
 
         # Normalize rewards
 
@@ -191,15 +189,15 @@ class RewardPredictorEnsemble:
         ensemble_rs *= 0.05
         ensemble_rs = ensemble_rs.transpose()
         assert_equal(ensemble_rs.shape, (self.n_preds, n_steps))
-        logging.debug("Reward mean/stddev:\n%s %s",
-                      self.r_norm.mean,
-                      self.r_norm.std)
-        logging.debug("Normalized rewards:\n%s", ensemble_rs)
+        #self.logger.debug("Reward mean/stddev:\n%s %s",
+        #                  self.r_norm.mean,
+        #                  self.r_norm.std)
+        #self.logger.debug("Normalized rewards:\n%s", ensemble_rs)
 
         # "...and then averaging the results."
         rs = np.mean(ensemble_rs, axis=0)
         assert_equal(rs.shape, (n_steps, ))
-        logging.debug("After ensemble averaging:\n%s", rs)
+        #self.logger.debug("After ensemble averaging:\n%s", rs)
 
         return rs
 
@@ -220,21 +218,18 @@ class RewardPredictorEnsemble:
         """
         Train all ensemble members for one epoch.
         """
-        print("Training/testing with %d/%d preferences" % (len(prefs_train),
-                                                           len(prefs_val)))
 
         start_steps = self.n_steps
         start_time = time.time()
 
-        for _, batch in enumerate(batch_iter(prefs_train.prefs,
-                                             batch_size=32,
-                                             shuffle=True)):
+        for ind, batch in enumerate(batch_iter(prefs_train.prefs,
+                                               batch_size=32,
+                                               shuffle=True)):
             self.train_step(batch, prefs_train)
             self.n_steps += 1
 
             if self.n_steps and self.n_steps % val_interval == 0:
                 self.val_step(prefs_val)
-
         end_time = time.time()
         end_steps = self.n_steps
         rate = (end_steps - start_steps) / (end_time - start_time)
@@ -254,6 +249,7 @@ class RewardPredictorEnsemble:
         ops = [self.summaries, [rp.train for rp in self.rps]]
         summaries, _ = self.sess.run(ops, feed_dict)
         self.train_writer.add_summary(summaries, self.n_steps)
+
 
     def val_step(self, prefs_val):
         val_batch_size = 32
@@ -292,20 +288,21 @@ class RewardPredictorNetwork:
     - pred      Predicted preference
     """
 
-    def __init__(self, core_network, dropout, batchnorm, lr):
+    def __init__(self, core_network, dropout, batchnorm, lr, obs_shape):
         training = tf.placeholder(tf.bool)
         # Each element of the batch is one trajectory segment.
         # (Dimensions are n segments x n frames per segment x ...)
-        s1 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 4))
-        s2 = tf.placeholder(tf.float32, shape=(None, None, 84, 84, 4))
+        h, w, c = obs_shape
+        s1 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
+        s2 = tf.placeholder(tf.float32, shape=(None, None, h, w, c))
         # For each trajectory segment, there is one human judgement.
         pref = tf.placeholder(tf.float32, shape=(None, 2))
 
         # Concatenate trajectory segments so that the first dimension is just
         # frames
         # (necessary because of conv layer's requirements on input shape)
-        s1_unrolled = tf.reshape(s1, [-1, 84, 84, 4])
-        s2_unrolled = tf.reshape(s2, [-1, 84, 84, 4])
+        s1_unrolled = tf.reshape(s1, [-1, h, w, c])
+        s2_unrolled = tf.reshape(s2, [-1, h, w, c])
 
         # Predict rewards for each frame in the unrolled batch
         _r1 = core_network(

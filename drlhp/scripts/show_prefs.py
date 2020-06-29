@@ -13,7 +13,7 @@ from multiprocessing import Queue
 
 import numpy as np
 
-from utils import VideoRenderer
+from drlhp.utils import VideoRenderer
 
 
 def main():

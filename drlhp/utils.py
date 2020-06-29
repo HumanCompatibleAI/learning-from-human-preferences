@@ -2,14 +2,18 @@ import queue
 import random
 import socket
 import time
-from multiprocessing import Process
 
 import gym
 import numpy as np
 import pyglet
+import pdb
+import sys
 
-from a2c.common.atari_wrappers import wrap_deepmind
+from drlhp.deprecated.a2c.common.atari_wrappers import wrap_deepmind
+from drlhp.deprecated.a2c.common.misc_util import set_global_seeds
+from drlhp.deprecated.a2c.common.vec_env.subproc_vec_env import SubprocVecEnv
 from scipy.ndimage import zoom
+from multiprocessing import Process
 
 
 # https://github.com/joschu/modular_rl/blob/master/modular_rl/running_stat.py
@@ -64,18 +68,19 @@ class Im(object):
 
     def imshow(self, arr):
         if self.window is None:
-            height, width = arr.shape
+            height, width, channels = arr.shape
             self.window = pyglet.window.Window(
                 width=width, height=height, display=self.display)
             self.width = width
             self.height = height
+            self.channels = channels
             self.isopen = True
 
-        assert arr.shape == (self.height, self.width), \
+        assert arr.shape == (self.height, self.width, self.channels), \
             "You passed in an image with the wrong number shape"
-
+        flipped_arr = np.flip(arr, axis=0)
         image = pyglet.image.ImageData(self.width, self.height,
-                                       'L', arr.tobytes(), pitch=-self.width)
+                                       'RGB', flipped_arr.tobytes())
         self.window.clear()
         self.window.switch_to()
         self.window.dispatch_events()
@@ -95,53 +100,46 @@ class VideoRenderer:
     play_through_mode = 0
     restart_on_get_mode = 1
 
-    def __init__(self, vid_queue, mode, zoom=1, playback_speed=1):
+    def __init__(self, vid_queue, mode, fps=12, zoom=1, playback_speed=1, channels=3):
         assert mode == VideoRenderer.restart_on_get_mode or mode == VideoRenderer.play_through_mode
         self.mode = mode
         self.vid_queue = vid_queue
-        self.zoom_factor = zoom
+        self.channels = channels
+        if self.channels == 1:
+            self.zoom_factor = zoom
+        else:
+            self.zoom_factor = [zoom]*(self.channels-1) + [1]
         self.playback_speed = playback_speed
-        self.proc = Process(target=self.render)
-        self.proc.start()
+        self.stop_render = False
+        self.current_frames = None
+        self.v = None
+        self.fps = fps
+        self.sleep_time = 1/self.fps
 
     def stop(self):
-        self.proc.terminate()
+        self.stop_render = True
 
-    def render(self):
+    def render(self, frames):
         v = Im()
-        frames = self.vid_queue.get(block=True)
         t = 0
         while True:
-            # Add a grey dot on the last line showing position
-            width = frames[t].shape[1]
-            fraction_played = t / len(frames)
-            x = int(fraction_played * width)
-            frames[t][-1][x] = 128
-
-            zoomed_frame = zoom(frames[t], self.zoom_factor)
+            start = time.time()
+            zoomed_frame = zoom(frames[t], self.zoom_factor, order=1)
             v.imshow(zoomed_frame)
-
+            end = time.time()
+            render_time = end - start
             if self.mode == VideoRenderer.play_through_mode:
                 # Wait until having finished playing the current
                 # set of frames. Then, stop, and get the most
                 # recent set of frames.
                 t += self.playback_speed
                 if t >= len(frames):
-                    frames = self.get_queue_most_recent()
-                    t = 0
+                    v.close()
+                    return
                 else:
-                    time.sleep(1/60)
-            elif self.mode == VideoRenderer.restart_on_get_mode:
-                # Always try and get a new set of frames to show.
-                # If there is a new set of frames on the queue,
-                # restart playback with those frames immediately.
-                # Otherwise, just keep looping with the current frames.
-                try:
-                    frames = self.vid_queue.get(block=False)
-                    t = 0
-                except queue.Empty:
-                    t = (t + self.playback_speed) % len(frames)
-                    time.sleep(1/60)
+                    sleep_time = max(0, self.sleep_time-render_time)
+                    time.sleep(sleep_time)
+                    continue
 
     def get_queue_most_recent(self):
         # Make sure we at least get something
@@ -225,12 +223,16 @@ def batch_iter(data, batch_size, shuffle=False):
         start_idx += batch_size
 
 
-def make_env(env_id, seed=0):
-    if env_id in ['MovingDot-v0', 'MovingDotNoFrameskip-v0']:
-        import gym_moving_dot
-    env = gym.make(env_id)
-    env.seed(seed)
-    if env_id == 'EnduroNoFrameskip-v4':
-        from enduro_wrapper import EnduroWrapper
-        env = EnduroWrapper(env)
-    return wrap_deepmind(env)
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
