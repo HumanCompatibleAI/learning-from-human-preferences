@@ -194,5 +194,5 @@ class PrefBuffer:
             print("Waiting for preferences; {}/{} train so far, {}/{} val ".format(train_len,
                                                                                    min_len,
                                                                                    val_len,
-                                                                                   0))
+                                                                                   1))
             time.sleep(5.0)
