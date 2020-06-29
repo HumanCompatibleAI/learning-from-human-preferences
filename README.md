@@ -49,7 +49,7 @@ Tests can be run with
 `pytest tests/`
 
 ## Human Preferences GUI
-When not training with human rather than synthetic preferences, you'll see two windows: a larger one showing a pair of examples of agent
+When training with human rather than synthetic preferences, you'll see two windows: a larger one showing a pair of examples of agent
 behaviour, and another smaller window showing the last full episode that the
 agent played (so you can see how qualitative behaviour is changing). Enter 'L'
 in the terminal to indicate that you prefer the left example; 'R' to indicate
