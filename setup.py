@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 with open("README.md", "r") as fh:
-    long_description = fh.read()
+    long_description = "More general implementation of Deep RL from Human Preferences" # fh.read() Temporarily modified due to ascii issue 
 
 with open('requirements.txt') as f:
     requirements = f.read().splitlines()
