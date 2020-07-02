@@ -3,8 +3,7 @@
 
 This code is built on a reproduction of OpenAI and DeepMind's [Deep Reinforcement Learning from Human Preferences](https://blog.openai.com/deep-reinforcement-learning-from-human-preferences/), 
 done by Matthew Rahtz, and has been significantly refactored for easier plug and play use in research applications for the Center for Human Compatible Artificial Intelligence
-at UC Berkeley. The code as written by Matthew Rahtz prior to refactor can be found [here](https://github.com/mrahtz/learning-from-human-preferences). Refactoring work 
-was primarily completed by Cody Wild in Spring 2020. 
+at UC Berkeley. The code as written by Matthew Rahtz prior to refactor can be found [here](https://github.com/mrahtz/learning-from-human-preferences). Refactoring work was primarily completed by Cody Wild in Spring 2020. 
 
 
 ## Refactor
@@ -73,7 +72,8 @@ Here is a (non-exhaustive!) set of examples of those workflows.
 
 
 ### Default - Collecting human preferences & training reward
-```wrapped_env = HumanPreferencesEnvWrapper(env, 
+```
+wrapped_env = HumanPreferencesEnvWrapper(env, 
                                             segment_length=100
                                             synthetic_preferences=False, 
                                             n_initial_training_steps=10)
@@ -95,7 +95,8 @@ save out preferences to a file, you can call `wrapped_env.save_prefs()`. By defa
 
 
 ### Training reward from pre-collected preferences 
-```wrapped_env = HumanPreferencesEnvWrapper(env, 
+```
+wrapped_env = HumanPreferencesEnvWrapper(env, 
                                             prefs_dir=<prefs_dir>
                                             collect_prefs=False, 
                                             train_reward=True, 
@@ -107,7 +108,8 @@ every 10 training steps to `<log_dir>/reward_predictor_checkpoints/reward_predic
 `drlhp_logs`. 
 
 ### Using a pretrained reward model without additional training
-```wrapped_env = HumanPreferencesEnvWrapper(env, 
+```
+wrapped_env = HumanPreferencesEnvWrapper(env, 
                                             pretrained_reward_predictor_dir='my_log_dir/reward_predictor_checkpoints/
                                             collect_prefs=False, 
                                             train_reward=False)
