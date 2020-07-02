@@ -74,20 +74,21 @@ Here is a (non-exhaustive!) set of examples of those workflows.
 ### Default - Collecting human preferences & training reward
 ```
 wrapped_env = HumanPreferencesEnvWrapper(env, 
-                                            segment_length=100
-                                            synthetic_preferences=False, 
-                                            n_initial_training_steps=10)
+                                         segment_length=100
+                                         synthetic_preferences=False, 
+                                         n_initial_training_steps=10)
 ```
 The above code will create an environment that will spin off both preference acquisition and reward training processes, and 
 will switch to returning the predicted reward as environment reward after 10 training steps of the reward model. Synthetic 
 preferences is set to True by default, but here we're setting it to False to indicate a desire to run the PrefInterface GUI. 
 
 ### Collecting preferences, but not training reward
-```wrapped_env = HumanPreferencesEnvWrapper(env, 
-                                            synthetic_preferences=False,
-                                            collect_prefs=True, 
-                                            train_reward=False, 
-                                            log_dir=<log_dir>)
+```
+wrapped_env = HumanPreferencesEnvWrapper(env, 
+                                         synthetic_preferences=False,
+                                         collect_prefs=True, 
+                                         train_reward=False, 
+                                         log_dir=<log_dir>)
 ```
 This workflow can be useful if you want to batch-collect preferences to be saved out and used in training later. When you want to 
 save out preferences to a file, you can call `wrapped_env.save_prefs()`. By default, preferences will be saved to 
@@ -97,10 +98,10 @@ save out preferences to a file, you can call `wrapped_env.save_prefs()`. By defa
 ### Training reward from pre-collected preferences 
 ```
 wrapped_env = HumanPreferencesEnvWrapper(env, 
-                                            prefs_dir=<prefs_dir>
-                                            collect_prefs=False, 
-                                            train_reward=True, 
-                                            reward_predictor_ckpt_interval=10)
+                                         prefs_dir=<prefs_dir>
+                                         collect_prefs=False, 
+                                         train_reward=True, 
+                                         reward_predictor_ckpt_interval=10)
 ```
 
 This will load a preferences database out of `prefs_dir` and use it to train a reward model, which will save a checkpoint 
@@ -110,9 +111,9 @@ every 10 training steps to `<log_dir>/reward_predictor_checkpoints/reward_predic
 ### Using a pretrained reward model without additional training
 ```
 wrapped_env = HumanPreferencesEnvWrapper(env, 
-                                            pretrained_reward_predictor_dir='my_log_dir/reward_predictor_checkpoints/
-                                            collect_prefs=False, 
-                                            train_reward=False)
+                                         pretrained_reward_predictor_dir='my_log_dir/reward_predictor_checkpoints/
+                                         collect_prefs=False, 
+                                         train_reward=False)
 ```
 To confirm that the env is using the trained reward model rather than the underlying env, check that the
 `using_reward_from_predictor` flag is set to True. If at some point you want to switch back to underlying environment 
