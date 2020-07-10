@@ -43,6 +43,11 @@ This repo is structured as a Python package, and can be installed by running
 
 `python setup.py install`
 
+If you wish to develop the package, you may wish to install it in editable mode using `-e` and
+install some optional packages with the `dev` extras:
+
+`pip install -e .[dev]`
+
 Tests can be run with
 
 `pytest tests/`
