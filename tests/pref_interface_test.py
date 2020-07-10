@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import unittest
-from itertools import combinations
 from multiprocessing import Queue
 
 import numpy as np
@@ -25,26 +24,6 @@ class TestPrefInterface(unittest.TestCase):
         self.p = PrefInterface(synthetic_prefs=True, max_segs=1000,
                                log_dir='/tmp')
         termcolor.cprint(self._testMethodName, 'red')
-
-    def test_sample_pair(self):
-        seg_pipe = Queue()
-        n_segments = 5
-        send_segments(n_segments, seg_pipe)
-        self.p.recv_segments(seg_pipe)
-
-        # Check that we get exactly the right number of unique pairs back
-        n_possible_pairs = len(list(combinations(range(n_segments), 2)))
-        tested_pairs = set()
-        for _ in range(n_possible_pairs):
-            s1, s2 = self.p.sample_seg_pair()
-            tested_pairs.add((s1.hash, s2.hash))
-            tested_pairs.add((s2.hash, s1.hash))
-        self.assertEqual(len(tested_pairs), 2 * n_possible_pairs)
-
-        # Check that if we try to get just one more, we get an exception
-        # indicating that there are no more unique pairs available
-        with self.assertRaises(IndexError):
-            self.p.sample_seg_pair()
 
     def test_recv_segments(self):
         """
