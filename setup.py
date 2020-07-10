@@ -3,6 +3,8 @@ from setuptools import find_packages, setup
 
 TESTS_REQUIRE = [
     "pytest",
+    # Needed by tests.test_env_wrapper, but not DRLHP proper
+    "stable_baselines~=2.10",
 ]
 
 

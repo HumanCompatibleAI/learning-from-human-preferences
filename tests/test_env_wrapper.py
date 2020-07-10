@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import pytest
 import gym
+from stable_baselines.common.atari_wrappers import FrameStack
 from drlhp.reward_predictor_core_network import net_cnn
 from drlhp import HumanPreferencesEnvWrapper
 import logging
@@ -36,6 +37,7 @@ class DummyEnv(gym.Env):
 @pytest.fixture
 def dummy_pixel_env():
     env = DummyEnv(observation_space=gym.spaces.Box(shape=(64, 64, 3), low=0, high=255), action_space=gym.spaces.Discrete(25))
+    env = FrameStack(env, n_frames=4)
     return env
 
 
