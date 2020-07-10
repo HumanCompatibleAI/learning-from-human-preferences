@@ -3,11 +3,6 @@ from setuptools import find_packages, setup
 
 TESTS_REQUIRE = [
     "pytest",
-    "pytest-xdist",
-    # These dependencies are needed by `test_env_wrapper` but not `drlhp` proper
-    "stable_baselines~=2.10",
-    # TODO: this repo is currently private
-    "realistic-benchmarks @ git+https://github.com/HumanCompatibleAI/realistic-benchmarks.git"
 ]
 
 

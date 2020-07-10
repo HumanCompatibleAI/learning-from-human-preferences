@@ -5,11 +5,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import pytest
 import gym
-from stable_baselines.common.atari_wrappers import FrameStack
 from drlhp.reward_predictor_core_network import net_cnn
 from drlhp import HumanPreferencesEnvWrapper
 import logging
-from realistic_benchmarks.wrappers import ActionMeaningsWrapper
 import time
 import tensorflow as tf
 from random import randint
@@ -34,11 +32,10 @@ class DummyEnv(gym.Env):
     def reset(self):
         return self.observation_space.sample()
 
+
 @pytest.fixture
 def dummy_pixel_env():
     env = DummyEnv(observation_space=gym.spaces.Box(shape=(64, 64, 3), low=0, high=255), action_space=gym.spaces.Discrete(25))
-    env = FrameStack(env, n_frames=4)
-    env = ActionMeaningsWrapper(env, env_type="flattened")
     return env
 
 
