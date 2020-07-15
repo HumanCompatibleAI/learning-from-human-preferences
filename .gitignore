@@ -8,3 +8,6 @@ tags
 
 .floydexpt
 floydruns
+
+venv/
+*.egg-info/
