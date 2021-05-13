@@ -4,11 +4,8 @@
 A simple CLI-based interface for querying the user about segment preferences.
 """
 
-import logging
 import queue
 import time
-from copy import deepcopy
-from itertools import combinations
 import multiprocessing as mp
 from random import shuffle
 import sys

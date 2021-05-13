@@ -3,7 +3,8 @@
 
 This code is built on a reproduction of OpenAI and DeepMind's [Deep Reinforcement Learning from Human Preferences](https://blog.openai.com/deep-reinforcement-learning-from-human-preferences/), 
 done by Matthew Rahtz, and has been significantly refactored for easier plug and play use in research applications for the Center for Human Compatible Artificial Intelligence
-at UC Berkeley. The code as written by Matthew Rahtz prior to refactor can be found [here](https://github.com/mrahtz/learning-from-human-preferences). Refactoring work was primarily completed by Cody Wild in Spring 2020. 
+at UC Berkeley. The code as written by Matthew Rahtz prior to refactor can be found [here](https://github.com/mrahtz/learning-from-human-preferences). 
+Refactoring work was primarily completed by Cody Wild in Spring 2020. 
 
 
 ## Refactor

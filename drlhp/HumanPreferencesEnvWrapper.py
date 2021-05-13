@@ -1,7 +1,6 @@
 import multiprocessing as mp
 from gym import Wrapper, Env
 import numpy as np
-import sys
 import os
 import time
 import os.path as osp
@@ -12,7 +11,6 @@ from drlhp.pref_interface import PrefInterface
 from drlhp.reward_predictor import RewardPredictorEnsemble
 from drlhp.reward_predictor_core_network import net_cnn
 from typing import Callable
-import tensorflow as tf
 
 PREFS_VAL_FRACTION = 0.2
 
@@ -406,23 +404,23 @@ class HumanPreferencesEnvWrapper(Wrapper):
     def _start_reward_predictor_training(self):
         self.reward_training_proc = mp.get_context('spawn').Process(target=_train_reward_predictor, daemon=True,
                                                                     args=(self.reward_predictor_network,
-                                                                         self.train_reward,
-                                                                         self.pretrained_reward_predictor_dir,
-                                                                         self.obs_shape,
-                                                                         self.pref_pipe,
-                                                                         self.pref_db_size,
-                                                                         self.prefs_dir,
-                                                                         self.max_prefs,
-                                                                         self.ckpt_interval,
-                                                                         self.n_initial_prefs,
-                                                                         self.reward_training_steps,
-                                                                         self.reward_database_refresh_interval,
-                                                                         self.val_interval,
-                                                                         self.kill_reward_training_flag,
-                                                                         self.save_prefs_flag,
-                                                                         self.save_model_flag,
-                                                                         self.log_dir,
-                                                                         self.reward_predictor_log_level))
+                                                                          self.train_reward,
+                                                                          self.pretrained_reward_predictor_dir,
+                                                                          self.obs_shape,
+                                                                          self.pref_pipe,
+                                                                          self.pref_db_size,
+                                                                          self.prefs_dir,
+                                                                          self.max_prefs,
+                                                                          self.ckpt_interval,
+                                                                          self.n_initial_prefs,
+                                                                          self.reward_training_steps,
+                                                                          self.reward_database_refresh_interval,
+                                                                          self.val_interval,
+                                                                          self.kill_reward_training_flag,
+                                                                          self.save_prefs_flag,
+                                                                          self.save_model_flag,
+                                                                          self.log_dir,
+                                                                          self.reward_predictor_log_level))
         self.reward_training_proc.start()
 
     def _update_episode_segment(self, obs, reward, done):
@@ -542,7 +540,6 @@ class HumanPreferencesEnvWrapper(Wrapper):
         else:
             self.using_reward_from_predictor = True
             self.force_return_true_reward = False
-
 
     def _cleanup_processes(self):
         self.logger.debug("Sending kill flags to processes")
